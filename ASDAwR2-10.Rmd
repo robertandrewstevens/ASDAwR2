@@ -1,0 +1,489 @@
+---
+title: "sawr10"
+author: "Robert A. Stevens"
+date: "January 4, 2017"
+output: html_document
+---
+
+```{r, comment=NA}
+library(spdep)
+library(nlme)
+library(lmtest)
+library(sandwich)
+library(mgcv)
+library(MASS)
+library(spgwr)
+```
+
+*Applied Spatial Data Analysis with R* by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
+
+# 10 Modeling Areal Data
+
+## 10.1 Introduction
+
+We have seen in Chapter 9 that the lack of independence between observations in spatial data – spatial autocorrelation – is commonplace, and that tests are available. In an ideal world, one would prefer to gather data in which the observations were mutually independent, and so avoid problems in inference from analytical results. Most applied data analysts, however, do not have this option, and must work with the data that are available, or that can be collected with available technologies. It is quite often the case that observations on relevant covariates are not available at all, and that the detection of spatial autocorrelation in data or model residuals in fact constitutes the only way left to model the remaining variation.
+
+In this chapter, we show how spatial structure in dependence between observations may be modeled, in particular for areal data, but where necessary also using alternative representations. We look at spatial econometrics approaches separately, because the terminology used in that domain differs somewhat from other areas of spatial statistics. We cover spatial filtering using Moran eigenvectors and geographically weighted regression in this chapter, but leave Bayesian hierarchical models until Chapter 11.
+
+The problems we face when trying to fit models in the presence of spatial autocorrelation are challenging, not least because the spatial autocorrelation that we seem to have found may actually come from model misspecification (see Section 9.4). If this is the case, effort spent on modeling the spatial structure would be better used on improving the model itself, perhaps by handling heteroskedasticity, by adding a missing covariate, by revisiting the functional form of included covariates, or by reconsidering the distributional representation of the response variable.
+
+## 10.2 Spatial Statistics Approaches
+
+Spatial dependence can be modeled in different ways using statistical models. In many cases, it is common to assume that observations are independent and identically distributed, but this may not be the case when working with spatial data. Observations are not independent because there may exist some correlation between neighboring areas. It may also be difficult to pick apart the impact of spatial autocorrelation and spatial differences in the distribution of the observation. Cressie (1993, pages 402–448, 458–477, 548–568) provides a very wide discussion of these approaches, including reviews of the background for their development and comprehensive worked examples. Schabenberger and Gotway (2005, pages 335–348) and Waller and Gotway (2004, pages 362–380) concentrate on the spatial autoregressive models to be used in this section. Wall (2004) provides a useful comparative review of the ways in which spatial processes for areal data are modeled. Banerjee et al. (2004, pages 79–87) also focus on these models, because the key features carry through to hierarchical models. Fortin and Dale (2005, pages 229–233) indicate that spatial autoregressive models may play a different role in ecology, although reviews like Dormann et al. (2007) suggest that they may be of use.
+
+In this section, we have followed Waller and Gotway (2004, Chapter 9) quite closely, as their examples highlight issues such as transforming the response variable and using weights to try to handle heteroskedasticity.
+
+From a statistical point of view, it is possible to account for correlated observations by considering a structure of the following kind in the model. If the vector of response variables is multivariate normal, we can express the model as follows:
+
+    Y = μ + e
+
+where μ is the vector of area means, which can be modeled in different ways and e is the vector of random errors, which we assume is normally distributed with zero mean and generic variance V . The mean is often supposed to depend on a linear term on some covariates X, so that we will substitute the mean by t(X)*β in the model. On the other hand, correlation between areas is taken into account by considering a specific form of the variance matrix V.
+
+For the case of non-Normal variables, we could transform the original data to achieve the desired Normality. Hence, the techniques described below can still be applied on the transformed data. In principle, many correlation structures could be feasible in order to account for spatial correlation. However, we focus on two approaches that are commonly used in practice, such as SAR (Simultaneous Autoregressive) and CAR (Conditionally Autoregressive) models.
+
+In Chapter 9, we took the mean of the counts of leukemia cases by tract as our best understanding of the data generation process, supplementing this with the constant risk approach to try to handle heterogeneity coming from variations in tract populations. One of the alternatives examined by Waller and Gotway (2004, page 348) is to take a log transformation of the rate:
+
+    Z[i] = log(1000(Y[i] + 1)/n[i])
+
+The transformed incidence proportions are not yet normal, with three outliers, tracts with small populations but unexpectedly large case counts. They could be smoothed away, but may in fact be interesting, as the patterns they display may be related to substantive covariates, such as closeness to TCE locations. As covariates, we have used the inverse distance to the closest TCE (PEXPOSURE), the proportion of people aged 65 or higher (PCTAGE65P) and the proportion of people who own their own home (PCTOWNHOME).
+
+To set the scene, let us start with a linear model of the relationship between the transformed incidence proportions and the covariates. Note that most model fitting functions accept Spatial*DataFrame objects as their data argument values, and simply treat them as regular data.frame objects. This is not by inheritance, but because the same access methods are provided (see page 35).
+
+```{r, comment=NA}
+nylm <- lm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8) 
+summary(nylm)
+NY8$lmresid <- residuals(nylm)
+```
+
+**Figure 10.1** shows the spatial distribution of residual values for the study area census tracts. The two census variables appear to contribute for explaining the variance in the response variable, but exposure to TCE does not. Moreover, although there is less spatial autocorrelation in the residuals from the model with covariates than in the null model, it is clear that there is information in the residuals that we should try to use. An exact test for spatial autocorrelation in the residuals leads to similar conclusions.
+
+**Figure 10.1**. Residuals from the linear model of transformed incidence proportions; TCE site locations shown for comparative purposes
+
+Since the Moran test is intended to detect spatial autocorrelation, we can try to fit a model taking this into account. We should not, however, forget that the mis-specifications detected by Moran’s I can have a range of causes (see Section 9.4). It is also the case that if the fitted model exhibits multi-collinearity, the results of the test may be affected because of the numerical consequences of the model matrix not being of full rank for the expectation and variance of the statistic.
+
+```{r, comment=NA}
+NYlistw <- nb2listw(NY_nb, style = "B") 
+lm.morantest(nylm, NYlistw)
+```
+
+### 10.2.1 Simultaneous Autoregressive Models
+
+The SAR specification uses a regression on the values from the other areas to account for the spatial dependence. This means that the error terms ε are modeled so that they depend on each other in the following way:
+
+    e[i] = sum(b[i, j]*e[i], i = 1:m) + ε[i]
+
+Here, ε[i] are used to represent residual errors, which are assumed to be independently distributed according to a Normal distribution with zero mean and diagonal covariance matrix Σ[ε] with elements σ[ε]^2 , i = 1, ..., m (the same variance σ[ε]^2 is often considered though). The b[i, j] values are used to represent spatial dependence between areas. b[i, i] must be set to zero so that each area is not regressed on itself.
+
+Note that if we express the error terms as e = B(Y − t(X)*β) + ε, the model can also be expressed as
+
+    Y = t(X)*β + B*(Y − t(X)*β) + ε
+
+Hence, this model can be formulated in a matrix form as follows:
+
+    (I − B)*(Y − t(X)*β) = ε
+
+where B is a matrix that contains the dependence parameters b[i, j] and I is the identity matrix of the required dimension. It is important to point out that in order for this SAR model to be well defined, the matrix I − B must be non-singular.
+
+Under this model, Y is distributed according to a multivariate normal with mean
+
+    E[Y] = t(X)*β
+
+and covariance matrix
+
+    Var[Y] = inv(I − B)*Σ[ε]*inv(I − t(B))
+
+Often Σ[ε] is taken to depend on a single parameter σ^2, so that Σ[ε] = σ^2*I and then Var[Y] simplifies to
+
+    Var[Y] = σ^2*inv(I − B)*inv(I − t(B))
+
+It is also possible to specify Σ[ε] as a diagonal matrix of weights associated with heterogeneity among the observations.
+
+A useful re-parametrization of this model can be obtained by writing B = λ*W, where λ is a spatial autocorrelation parameter and W is a matrix that represents spatial dependence – it is often assumed to be symmetric. These structures can be chosen among those described in Chapter 9. With this specification, the variance of Y becomes
+
+    Var[Y ] = σ^2*inv(I − λ*W)*inv(I − λ*t(W))
+
+These models can be estimated efficiently by maximum likelihood. In R this can be done by using function spautolm in package spdep. The model can be specified using a formula for the linear predictor, whilst matrix W must be passed as a listw object. To create this object from the list of neighbors we can use function nb2listw, which will take an object of class nb, as explained in Chapter 9.
+
+The following code shows how to fit a simultaneous autoregression to the chosen model. We have fitted the standard model and the weighted model using the population size in 1980 (according to the US Census) in the areas as weights. This reproduces the example developed in Waller and Gotway (2004, Chapter 9, pages 375–379), and the reader is referred to their discussion for more information. In the call to nb2listw, we specified style = "B" to construct W using a binary indicator of neighborhood.
+
+```{r, comment=NA}
+nysar <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8, listw = NYlistw)
+summary(nysar)
+```
+
+According to the results obtained it seems that there is significant spatial correlation in the residuals because the estimated value of λ is 0.0405 and the p-value of the likelihood ratio test is 0.0220. In the likelihood ratio test we compare the model with no spatial autocorrelation (i.e. λ = 0) to the one which allows for it (i.e. the fitted model with non-zero autocorrelation parameter).
+
+The proximity to a TCE seems not to be significant, although its p-value is close to being significant at the 95% level and it would be advisable not to discard a possible association and to conduct further research on this. The other two covariates are significant, suggesting that census tracts with larger percentages of older people and with lower percentages of house owners have higher transformed incidence rates.
+
+However, this model does not account for the heterogeneous distribution of the population by tracts beyond the correction introduced in transforming incidence proportions. Weighted version of these models can be fitted so that tracts are weighted proportionally to the inverse of their population size. For this purpose, we include the parameter weights=POP8 in the call to the function lm.
+
+```{r, comment=NA}
+nylmw <- lm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8, weights = POP8)
+summary(nylmw)
+NY8$lmwresid <- residuals(nylmw)
+```
+
+Starting with the weighted linear model, we can see that the TCE exposure variable has become significant with the expected sign, indicating that tracts closer to the TCE sites have slightly higher transformed incidence proportions. The other two covariates now also have more significant coefficients. **Figure 10.2** shows that information has been shifted from the model residuals to the model itself, with little remaining spatial structure visible on the map.
+
+```{r, comment=NA}
+lm.morantest(nylmw, NYlistw)
+```
+
+**Figure 10.2**. Residuals from the weighted linear model of transformed incidence proportions; TCE site locations shown for comparative purposes
+
+The Moran tests for regression residuals can also be used with a weighted linear model object. The results are interesting, suggesting that the misspecification detected by Moran’s I is in fact related to heteroskedasticity more than to spatial autocorrelation. We can check this for the SAR model too, since spautolm also takes a weights argument:
+
+```{r, comment=NA}
+nysarw <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8, listw = NYlistw, weights = POP8)
+summary(nysarw)
+```
+
+The coefficients of the covariates change slightly in the new model, and all the coefficient p-values drop substantially. In this weighted SAR fit, proximity to a TCE site becomes significant. However, there are no traces of spatial autocorrelation left after adjusting for the heterogeneous size of the population. This suggests that the spatial variation in population between tracts is responsible for the observed residual spatial correlation after adjusting for covariates.
+
+To compare both models and choose the best one, we use Akaike’s Information Criterion (AIC) reported in the model summaries. The AIC is a weighted sum of the log-likelihood of the model and the number of fitted coefficients; according to the criterion, better models are those with the lower values of the AIC. Hence, the weighted model provides a better fitting since its AIC is considerably lower. This indicates the importance of accounting for heterogeneous populations in the analysis of this type of lattice data.
+
+### 10.2.2 Conditional Autoregressive Models
+
+The CAR specification relies on the conditional distribution of the spatial error terms. In this case, the distribution of e[i] conditioning on e[−i] (the vector of all random error terms minus e[i] itself) is given. Instead of the whole e[−i] vector, only the neighbors of area i, defined in a chosen way, are used. We represent them by e[j ∼ i]. Then, a simple way of putting the conditional distribution of e[i] is
+
+    e[i]|e[j ∼ i] ∼ N(A, B)
+    
+    A = sum(c[i, j]*e[j]/sum(c[i, j], j ∼ i), j ∼ i)
+    
+    B = σ[e]^2/sum(c[i, j], j∼i)
+
+where c[i, j] are dependence parameters similar to b[i, j]. However, specifying the conditional distributions of the error terms does not imply that the joint distribution exists. To have a proper distribution some constraints must be set on the parameters of the model. The reader is referred to Schabenberger and Gotway (2005, pages 338–339) for a detailed description of CAR specifications. For our modeling purposes, the previous guidelines will be enough to obtain a proper CAR specification in most cases.
+
+To fit a CAR model, we can use function spautolm again. This time we set the argument family = "CAR" to specify that we are fitting this type of models.
+
+```{r, comment=NA}
+nycar <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                  data = NY8, family = "CAR", listw = NYlistw)
+summary(nycar)
+```
+
+The estimated coefficients of the covariates in the model are very similar to those obtained with the SAR models. Nevertheless, the p-values of two covariates, the distance to the nearest TCE and the percentage of people owning a home, are slightly above the 0.05 threshold. The likelihood ratio test indicates that there is significant spatial autocorrelation and the estimated value of λ is 0.0841.
+
+Considering a weighted regression, using the population size as weights, for the same model to account for the heterogeneous distribution of the population completely removes the spatial autocorrelation in the data. The coefficients of the covariates do not change much and all of them become significant. Hence, modeling spatial autocorrelation by means of SAR or CAR specifications does not change the results obtained; Waller and Gotway (2004, pages 375–379) give a complete discussion of these results [1].
+
+```{r, comment=NA}
+nycarw <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                   data = NY8, family = "CAR", listw = NYlistw, weights = POP8) 
+summary(nycarw)
+```
+
+### 10.2.3 Fitting Spatial Regression Models
+
+The spautolm function fits spatial regression models by maximum likelihood, by first finding the value of the spatial autoregressive coefficient, which maximizes the log likelihood function for the model family chosen, and then fitting the other coefficients by generalized least squares at that point. This means that the spatial autoregressive coefficient can be found by line search using optimize, rather than by optimizing over all the model parameters at the same time.
+
+The most demanding part of the functions called to optimize the spatial autoregressive coefficient is the computation of the Jacobian, the log determinant of the n × n matrix |I − B|, or |I − λ*W| in our parametrization. As n increases, the use of the shortcut of
+
+     log(|I − λ*W|) = log(prod(1 − λ*ζ[i], i = 1:n))
+
+where ζ[i] are the eigenvalues of W , becomes more difficult. The default method of method = "full" uses eigenvalues, and can thus also set the lower and upper bounds for the line search for λ accurately (as [1/min[i](ζ[i]), 1/max[i](ζ[i])]), but is not feasible for large n. It should also be noted that although eigenvalues are computed for intrinsically asymmetric spatial weights matrices, their imaginary parts are discarded, so that even for method = "full", the consequences of using such asymmetric weights matrices are unknown.
+
+Alternative approaches involve finding the log determinant of a Cholesky decomposition of the sparse matrix (I − λ\*W) directly. Here it is not possible to pre-compute eigenvalues, so one log determinant is computed for each value of λ used, but the number needed is in general not excessive, and much larger n become feasible on ordinary computers. A number of different sparse matrix approaches have been tried, with the use of Matrix and method = "Matrix", the one suggested currently. All of the sparse matrix approaches to computing the Jacobian require that matrix W be symmetric or at least similar to symmetric, thus providing for weights with "W" and "S" styles based on symmetric neighbor lists and symmetric general spatial weights, such as inverse distance. Matrices that are similar to symmetric have the same eigenvalues, so that the eigenvalues of symmetric W\* = sqrt(D)\*W\*sqrt(D) and row-standardized W = D\*B are the same, for symmetric binary or general weights matrix B, and D a diagonal matrix of inverse row sums of B, d[i, i] = 1/sum(b[i, j], j = 1:n) (Ord, 1975, page 125).
+
+```{r, comment=NA}
+nysarwM <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                    data = NY8, family = "SAR", listw = NYlistw, weights = POP8, 
+                    method = "Matrix")
+summary(nysarwM)
+```
+
+The output from fitting the weighted SAR model using functions from the Matrix package is identical with that from using the eigenvalues of W. Thanks to help from the Matrix package authors, Douglas Bates and Martin Machler; additional facilities have been made available allowing the Cholesky decomposition to be computed once and updated for new values of the spatial coefficient. An internal vectorized version of this update method has also been made available, making the look-up time for many coefficient values small.
+
+If it is of interest to examine values of the log likelihood function for a range of values of λ, the llprof argument may be used to give the number of equally spaced λ values to be chosen between the inverse of the smallest and largest eigenvalues for method = "full", or a sequence of such values more generally.
+
+**Figure 10.3**. Log likelihood values for a range of values of λ, weighted and unweighted SAR models; fitted spatial coefficient values and maxima shown
+
+```{r, comment=NA}
+1/range(eigenw(NYlistw))
+nysar_ll  <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                      data = NY8, family = "SAR", listw = NYlistw, llprof = 100)
+nysarw_ll <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                      data = NY8, family = "SAR", listw = NYlistw, llprof = 100,
+                      weights = POP8)
+```
+
+**Figure 10.3** shows the shape of the values of the log likelihood function along the feasible range of λ for the weighted and unweighted SAR models. We can see easily that the curves are very flat at the maxima, meaning that we could shift λ a good deal without impacting the function value much. The figure also shows the sharp fall-off in function values as the large negative values of the Jacobian kick in close to the ends of the feasible range.
+
+Finally, family = "SMA" for simultaneous moving average models is also available within the same general framework, but always involves handling dense matrices for fitting.
+
+```{r, comment=NA}
+nysmaw <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                   data = NY8, family = "SMA", listw = NYlistw, weights = POP8) 
+summary(nysmaw)
+```
+
+Although there may be computing environments within which it seems easier to fit spatial regression models, arguably few give the analyst both reasonable defaults and the opportunity to examine in as much detail as is needed in the internal workings of the methods used, and of their implementations in software. Naturally, improvements will need to be made, perhaps including the fitting of more than one spatial autocorrelation parameter.
+
+## 10.3 Mixed-Effects Models
+
+The errors e[i] which appear in the previous models are used to account for between-area variation, following a specified correlation structure. These terms are usually known as random effects because, contrary to what happens with fixed effects (the covariates), the value of the random effect can change from area to area. The range of application of random effects is quite wide, and they are often used to model different types of interaction between the observations. Although mixed-effects models belong to a different tradition from the spatial models discussed above, they are central to multi-level models and small area estimation, both of which can also be used in the analysis of spatial data. In the spatial context, Schabenberger and Gotway (2005, pages 325–334) discuss linear mixed-effects models; other coverage is to be found in Pinheiro and Bates (2000, pages 230–232, 237–238) for the implementation used here.
+
+Using a similar notation as in previous sections, mixed-effect models (McCulloch and Searle, 2001) can be formulated as
+
+     Y = X*β + Z*e + ε
+
+Vector e represents the random effects, whilst Z is used to account for their structure. The distribution of e is assumed to be Normal with mean zero and generic covariance matrix Σ[e]. This structure can reflect the influence of several elements of e on a single observation. Z is a design matrix that may be fixed or depend on any parameter. For example, Z can be set to a specific value to reproduce a SAR or CAR specification but, in this case, Z also depends on λ, which is another parameter to be estimated. Similar models may also be specified for areal data with point support using functions in the spBayes package.
+
+Maximum Likelihood or Restricted Maximum Likelihood (McCulloch and Searle, 2001) are often employed to fit mixed-effects models. Packages nlme and lme4 (Pinheiro and Bates, 2000) can fit these types of models. These packages allow the specification of different types of covariance matrices of the random effects, including spatial structure.
+
+The following example illustrates how to fit a mixed-effects model using a correlation matrix, which depends on the distance between the centroids of the areas. First, we need to specify the correlation structure between the areas. This correlation structure is similar to those used in geostatistics and we have chosen a Gaussian variogram based on the Euclidean distances between the centroids of the regions.
+
+```{r, comment=NA}
+NY8$x <- coordinates(NY8)[ , 1]/1000
+NY8$y <- coordinates(NY8)[ , 2]/1000
+sp1 <- corSpatial(1, form = ~x + y, type = "gaussian") 
+scor <- Initialize(sp1, as(NY8, "data.frame")[ , c("x", "y")], nugget = FALSE)
+```
+
+Once we have specified the correlation structure using corSpatial, we need to set up the model. The fixed part of the model is as in the previous SAR and CAR models. In the random part of the model we need to include a random effect per area. This is done by including "random = ∼ 1| AREAKEY" in the call to lme. The fitting functions require that the Spatial*DataFrame object be coerced to a data.frame object in this case.
+
+```{r, comment=NA}
+spmodel <- lme(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+               random = ~1 | AREAKEY, 
+               data = as(NY8, "data.frame"), correlation = scor, method = "ML")
+summary(spmodel)
+```
+
+In this case for the unweighted model, the coefficients of the fixed part are the same as for the linear model. The random effects can be arranged so that they follow a SAR or CAR specification, and it can be seen as a particular structure for Z. Note that when a SAR specification is added, Z, which models the structure of the random effects, may depend on further parameters.
+
+## 10.4 Spatial Econometrics Approaches
+
+One of the attractions of spatial data analysis is the wide range of scientific disciplines involved. Naturally, this leads to multiple approaches to many kinds of analysis, including accepted ways of applying tests and model fitting methods. It also leads to some sub-communities choosing their own sets of tools, not infrequently diverging from other sub-communities. During the 2003 Distributed Computational Statistics meeting, surprise and amusement was caused by the remark that the Internet domain www.spatial-statistics.com contains material chiefly relating to real estate research. But this connection is in fact quite reasonable, as real estate generates a lot of spatial data, and requires suitable methods. Indeed, good understanding of real estate markets and financing is arguably as important to society as a good understanding of the spatial dimensions of disease incidence.
+
+Spatial econometrics is authoritatively described by Anselin (1988, 2002), with additional comments by Bivand (2002, 2006) with regard to doing spatial econometrics in R. While the use of weights, as we have seen above, has resolved a serious model mis-specification in public health data, it would be more typical for econometricians to test first for heteroskedasticity, and to try to relieve it by adjusting coefficient standard errors:
+
+```{r, comment=NA}
+bptest(nylm)
+```
+
+The Breusch–Pagan test (Johnston and DiNardo, 1997, pages 198–200) results indicate the presence of heteroskedasticity when the residuals from the original linear model are regressed on the right-hand-side variables – the default test set. This might suggest the need to adjust the estimated coefficient standard errors using a variance–covariance matrix (Zeileis, 2004) taking heteroskedasticity into account:
+
+```{r, comment=NA}
+coeftest(nylm)
+coeftest(nylm, vcov = vcovHC(nylm, type = "HC4"))
+```
+ 
+There are only minor changes in the standard errors, and they do not affect our inferences [2].
+
+In spatial econometrics, Moran’s I is supplemented by Lagrange Multiplier tests fully described in Anselin (1988, 2002) and Anselin et al. (1996). The development of these tests, as more generally in spatial econometrics, seems to assume the use of row-standardized spatial weights, so we move from symmetric binary weights used above to row-standardized similar to symmetric weights. A key concern is to try to see whether the data generating process is a spatial error SAR or a spatial lag SAR. The former is the SAR that we have already met, while the spatial lag model includes only the endogenous spatially lagged dependent variable in the model.
+
+```{r, comment=NA}
+NYlistwW <- nb2listw(NY_nb, style = "W")
+res <- lm.LMtests(nylm, listw = NYlistwW, test = "all")
+tres <- t(sapply(res, function(x) c(x$statistic, x$parameter, x$p.value)))
+colnames(tres) <- c("Statistic", "df", "p-value") 
+printCoefmat(tres)
+```
+
+The robust LM tests take into account the alternative possibility, that is the LMerr test will respond to both an omitted spatially lagged dependent variable and spatially autocorrelated residuals, while the robust RLMerr is designed to test for spatially autocorrelated residuals in the possible presence of an omitted spatially lagged dependent variable. The lm.LMtests function here returns a list of five LM tests, which seem to point to a spatial lag specification. Further variants have been developed to take into account both spatial autocorrelation and heteroskedasticity, but are not yet available in R. Again, it is the case that if the fitted model exhibits multicollinearity, the results of the tests will be affected.
+
+The spatial lag model takes the following form: 
+
+     y = ρ*W*y + X*β + e
+
+where y is the endogenous variable, X is a matrix of exogenous variables, and W is the spatial weights matrix. This contrasts with the spatial Durbin model, including the spatial lags of the covariates (independent variables) with coefficients γ:
+
+    y = ρ*W*y + X*β + W*X*γ + e
+
+and the spatial error model:
+
+    y − λ*W*y = X*β − λ*W*X*β + e
+
+    (I − λ*W)*y = (I − λ*W)*X*β + e
+
+which can also be written as
+
+    y = X*β + u
+
+    u = λ*W*u + e
+
+First let us fit a spatial lag model by maximum likelihood, once again finding the spatial lag coefficient by line search, then the remaining coefficients by generalized least squares:
+
+```{r, comment=NA}
+nylag <- lagsarlm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8, listw = NYlistwW)
+summary(nylag)
+bptest.sarlm(nylag)
+```
+
+The spatial econometrics model fitting functions can also use sparse matrix techniques, but when the eigenvalue technique is used, asymptotic standard errors are calculated for the spatial coefficient. There is a numerical snag here, that if the variables in the model are scaled such that the other coefficients are scaled differently from the spatial autocorrelation coefficient, the inversion of the coefficient variance–covariance matrix may fail. The correct resolution is to rescale the variables, but the tolerance of the inversion function called internally may be relaxed. In addition, an LM test on the residuals is carried out, suggesting that no spatial autocorrelation remains, and a spatial Breusch–Pagan test shows a lessening of heteroskedasticity.
+
+Fitting a spatial Durbin model, a spatial lag model including the spatially lagged explanatory variables (but not the lagged intercept when the spatial weights are row standardized), we see that the fit is not improved significantly.
+
+```{r, comment=NA}
+nymix <- lagsarlm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                  data = NY8, listw = NYlistwW, type = "mixed")
+nymix
+anova(nymix, nylag)
+```
+
+If we impose the Common Factor constraint on the spatial Durbin model, that γ = −λβ, we fit the spatial error model:
+
+```{r, comment=NA}
+nyerr <- errorsarlm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8, listw = NYlistwW)
+summary(nyerr)
+```
+
+Both the spatial lag and Durbin models appear to fit the data somewhat better than the spatial error model. However, in relation to our initial interest in the relationship between transformed incidence proportions and exposure to TCE sites, we are no further forward than we were with the linear model, and although we seem to have reduced the mis-specification found in the linear model by choosing the spatial lag model, the reduction in error variance is only moderate.
+
+Spatial econometrics has also seen the development of alternatives to maximum likelihood methods for fitting models. Code for two of these has been contributed by Luc Anselin, and is available in spdep. For example, the spatial lag model may be fitted by analogy with two-stage least squares in a simultaneous system of equations, by using the spatial lags of the explanatory variables as instruments for the spatially lagged dependent variable.
+
+```{r, comment=NA}
+nystsls <- stsls(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8, listw = NYlistwW)
+summary(nystsls)
+```
+
+The implementation acknowledges that the estimate of the spatial coefficient will be biased, but because it can be used with very large data sets and does provide an alternative, it is worth mentioning. It is interesting that when the robust argument is chosen, adjusting not only standard errors but also coefficient values for heteroskedasticity over and above the spatial autocorrelation already taken into account, we see that the coefficient operationalizing TCE exposure moves towards significance:
+
+```{r, comment=NA}
+nystslsR <- stsls(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                  data = NY8, listw = NYlistwW, robust = TRUE)
+summary(nystslsR)
+```
+
+Finally, GMerrorsar is an implementation of the Kelejian and Prucha (1999) Generalized Moments (GM) estimator for the autoregressive parameter in a spatial model. It uses a GM approach to optimize λ and σ^2 jointly, and where the numerical search surface is not too flat, can be an alternative to maximum likelihood methods when n is large.
+
+```{r, comment=NA}
+nyGMerr <- GMerrorsar(Z ~ PEXPOSURE, data = NY8, listw = NYlistwW)
+summary(nyGMerr)
+```
+
+**Figure 10.4** shows, however, that there is much more variability in the surface on the σ^2 axis than on the λ axis, and so the optimizer may stop its search when the default joint criterion for termination is satisfied, rather than searching harder along λ. Of course, non-default settings may be passed to the optimizer to tune its performance, but this too requires care and insight.
+
+## 10.5 Other Methods
+
+Other methods can be used to model dependency between areas. In this section we introduce some of them, based in part on the recent applied survey reported by Dormann et al. (2007). A specific difficulty that we met above when considering mixed-effects models is that available functions for model fitting use point support rather than polygon support. This means that our prior description of the relationships between observations are distance-based, and so very similar to those described in detail in Chapter 8, where the focus was more on interpolation than modeling. These methods are discussed in the spatial context by Schabenberger and Gotway (2005, pages 352–382) and Waller and Gotway (2004, pages 380–409), and hierarchical methods are being employed with increasing frequency (Banerjee et al., 2004).
+
+### 10.5.1 GAM, GEE, GLMM
+
+Generalized Additive Models (GAM) are very similar to generalized linear models, but they also allow for including non-linear terms in the linear predictor term (Hastie and Tibshirani, 1990; Wood, 2006). It is worth noting that the formula argument to linear, generalized linear, spatial, and many other models may contain polynomial and spline terms if desired, but these need to be configured manually. Different types of non-linear functions are available, and may be chosen in the s() function in the formula. Here, an isotropic thin plate regression spline is used effectively as a semi-parametric trend surface to add smooth spatial structure from the residuals to the fit, as in Chapter 7 (page 180).
+
+```{r, comment=NA}
+nyGAM1 <- gam(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + s(x, y), weights = POP8, data = NY8)
+anova(nylmw, nyGAM1, test = "Chisq")
+```
+
+This does not add much to what we already knew from the weighted linear model, with the differences in the residual degrees of freedom showing that the thin plate regression spline term only takes 3.810 estimated degrees of freedom. This does not, however, exploit the real strengths of the technique. Because it can fit generalized models, we can step back from using the transformed incidence proportions to use the case counts (admittedly not integer because of the sharing-out of cases with unknown tract within blocks), offset by the logarithm of tract populations. Recall that we have said that distributional assumptions about the response variable matter – our response variable perhaps ought to be treated as discrete, so methods respecting this may be more appropriate.
+
+Using the Poisson Generalized Linear Model (GLM) fitting approach, we fit first with glm; the Poisson model is introduced in Chapter 11. We can already see that this GLM approach yields interesting insights and that the effects of TCE exposure on the numbers of cases are significant.
+
+```{r, comment=NA}
+nyGLMp <- glm(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + offset(log(POP8)), 
+              data = NY8, family = "poisson")
+summary(nyGLMp)
+```
+
+The use of the Moran’s I test for regression residuals is speculative and provisional. Based on Lin and Zhang (2007), it takes the deviance residuals and the linear part of the GLM and provides an indication that the Poisson regression, like the weighted linear regression, does not have strong residual spatial autocorrelation (see **Figure 10.5**). Much more work remains to be done, perhaps based on Jacqmin-Gadda et al. (1997), to reach a satisfactory spatial autocorrelation test for the residuals of GLM.
+
+```{r, comment=NA}
+NY8$lmpresid <- residuals(nyGLMp, type = "deviance") 
+lm.morantest(nyGLMp, listw = NYlistwW)
+```
+
+**Figure 10.5**. Residuals from the Poisson regression model; TCE site locations shown for comparative purposes
+
+With the GLM to start from, we again add an isotropic thin plate regression spline in gam. There is little over-dispersion present – fitting with family = quasipoisson, in which the dispersion parameter is not fixed at unity, so they can model over-dispersion that does not result in large changes. Model comparison shows that the presence of the spline term is now significant. While the coefficient values of the Poisson family fits are not directly comparable with the linear fits on the transformed incidence proportions, we can see that exposure to TCE sites is clearly more significant.
+
+```{r, comment=NA}
+nyGAMp <- gam(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + offset(log(POP8)) + s(x, y), 
+              data = NY8, family = "poisson") 
+summary(nyGAMp)
+anova(nyGLMp, nyGAMp, test = "Chisq")
+```
+
+Generalized Estimating Equations (GEE) are an alternative to the estimation of GLMs when we have correlated data. They are often used in the analysis of longitudinal data, when we have several observations for the same subject. In a spatial setting, the correlation arises between neighboring areas. The treatment in Dormann et al. (2007) is promising for the restricted case of clusters of grid cells, but has not yet been extended to irregular point or polygon support.
+
+Generalized linear mixed-effect models (GLMM) extend GLMs by allowing the incorporation of mixed effects into the linear predictor; see Waller and Gotway (2004, pages 387–392) and Schabenberger and Gotway (2005, pages 359–369). These random effects can account for correlation between observations. Here we use glmmPQL from MASS, described in Venables and Ripley (2002, pages 292–298), and a Gaussian spatial correlation structure as above when applying linear mixed-effect models. The glmmPQL function calls lme internally, so we can use the values of the random and correlation arguments used above on page 288. Dormann et al. (2007) suggest the use of a single group, because the spatial correlation structure is applied group-wise [3], but admit that this is an ‘abuse’ of the procedure.
+
+```{r, comment=NA}
+attach(as(NY8, "data.frame"))
+nyGLMMp <- glmmPQL(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + offset(log(POP8)), 
+                   data = NY8, family = poisson, random = ~1 | AREAKEY, correlation = scor)
+detach("as(NY8, \"data.frame\")")
+summary(nyGLMMp)
+```
+
+The fitting functions require that the Spatial*DataFrame object be coerced to a data.frame object, and attach be used to make the variables visible in the global environment in this case. The outcome is very close to the GAM results, and again we find that closeness to the TCE sites is a significant covariate; again, the percentage owning their own homes is not significant. Since it is fitted by penalized quasi-likelihood, no log likelihood value is available, and the summary reports NA for AIC, BIC, and log likelihood.
+
+### 10.5.2 Moran Eigenvectors
+
+In the previous chapter, we touched on the use of eigenvalues in the Saddlepoint approximation and exact tests for Moran’s I. The Moran eigenvector approach (Dray et al., 2006; Griffith and Peres-Neto, 2006) involved the spatial patterns represented by maps of eigenvectors; by choosing suitable orthogonal patterns and adding them to a linear or generalized linear model, the spatial dependence present in the residuals can be moved into the model.
+
+It uses brute force to search the set of eigenvectors of the matrix M*W*M, where
+
+    M = I − X*inc(t(X)*X)*t(X)
+
+is a symmetric and idempotent projection matrix and W are the spatial weights. In the spatial lag form of SpatialFiltering and in the GLM ME form below, X is an n-vector of ones, that is the intercept only.
+
+In its general form, SpatialFiltering chooses the subset of the n eigenvectors that reduce the residual spatial autocorrelation in the error of the model with covariates. The lag form adds the covariates in assessment of which eigenvectors to choose, but does not use them in constructing the eigenvectors. SpatialFiltering was implemented and contributed by Yongwan Chun and Michael Tiefelsdorf, and is presented in Tiefelsdorf and Griffith (2007); ME is based on Matlab code by Pedro Peres-Neto and is discussed in Dray et al. (2006) and Griffith and Peres-Neto (2006).
+
+```{r, comment=NA}
+nySFE <- SpatialFiltering(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                          data = NY8, nb = NY_nb, style = "W", verbose = FALSE)
+nylmSFE <- lm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + fitted(nySFE), data = NY8)
+summary(nylmSFE)
+anova(nylm, nylmSFE)
+```
+
+Since the SpatialFiltering approach does not allow weights to be used, we see that the residual autocorrelation of the original linear model is absorbed, or ‘whitened’ by the inclusion of selected eigenvectors in the model, but that the covariate coefficients change little. The addition of these eigenvectors – each representing an independent spatial pattern – relieves the residual autocorrelation, but otherwise makes few changes in the substantive coefficient values.
+
+The ME function also searches for eigenvectors from the spatial lag variant of the underlying model, but in a GLM framework. The criterion is a permutation bootstrap test on Moran’s I for regression residuals, and in this case, because of the very limited remaining spatial autocorrelation, is set at α = 0.5. Even with this very generous stopping rule, only two eigenvectors are chosen; their combined contribution just improves only the fit of the GLM model.
+
+```{r, comment=NA}
+nyME <- ME(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+           data = NY8, offset = log(POP8), family = "poisson", listw = NYlistwW, alpha = 0.5)
+nyME
+nyglmME <- glm(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + offset(log(POP8)) + fitted(nyME),
+               data = NY8, family = "poisson")
+summary(nyglmME)
+anova(nyGLMp, nyglmME, test = "Chisq")
+```
+
+**Figure 10.6**. Maps of the two eigenvalues selected for inclusion in the Poisson regression model
+
+**Figure 10.6** shows the spatial patterns chosen to match the very small amount of spatial autocorrelation remaining in the model. As with the other Poisson regressions, the closeness to TCE sites is highly significant. Since, however, many TCE sites are also in or close to more densely populated urban areas with the possible presence of both point-source and non-point-source pollution, it would be premature to take such results simply at their face value. There is, however, a potentially useful contrast between the cities of Binghampton in the south of the study area with several sites in its vicinity, and Syracuse in the north without TCE sites in this data set.
+
+### 10.5.3 Geographically Weighted Regression
+
+Geographically weighted regression (GWR) is an exploratory technique mainly intended to indicate where non-stationarity is taking place on the map, that is where locally weighted regression coefficients move away from their global values. Its basis is the concern that the fitted coefficient values of a global model, fitted to all the data, may not represent detailed local variations in the data adequately – in this it follows other local regression implementations. It differs, however, in not looking for local variation in ‘data’ space, but by moving a weighted window over the data, estimating one set of coefficient values at every chosen ‘fit’ point. The fit points are very often the points at which observations were made, but do not have to be. If the local coefficients vary in space, it can be taken as an indication of non-stationarity.
+
+The technique is fully described by Fotheringham et al. (2002) and involves first selecting a bandwidth for an isotropic spatial weights kernel, typically a Gaussian kernel with a fixed bandwidth chosen by leave-one-out cross- validation. Choice of the bandwidth can be very demanding, as n regressions must be fitted at each step. Alternative techniques are available, for example for adaptive bandwidths, but they may often be even more compute-intensive. GWR is discussed by Schabenberger and Gotway (2005, pages 316–317) and Waller and Gotway (2004, page 434), and presented with examples by Lloyd (2007, pages 79–86).
+
+```{r, comment=NA}
+bwG <- gwr.sel(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+               data = NY8, gweight = gwr.Gauss, verbose = FALSE)
+gwrG <- gwr(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+            data = NY8, bandwidth = bwG, gweight = gwr.Gauss, hatmatrix = TRUE)
+gwrG
+```
+
+Once the bandwidth has been found, or chosen by hand, the gwr function may be used to fit the model with the chosen local kernel and bandwidth. If the data argument is passed a SpatialPolygonsDataFrame or a SpatialPointsDataFrame object, the output object will contain a component, which is an object of the same geometry populated with the local coefficient estimates. If the input objects have polygon support, the centroids of the spatial entities are taken as the basis for analysis. The function also takes a fit.points argument, which permits local coefficients to be created by geographically weighted regression for other support than the data points.
+
+The basic GWR results are uninteresting for this data set, with very little local variation in coefficient values; the bandwidth is almost 180 km. Neither gwr nor gwr.sel yet take a weights argument, as it is unclear how non-spatial and geographical weights should be combined. A further issue that has arisen is that it seems that local collinearity can be induced, or at least observed, in GWR applications. A discussion of the issues raised is given by Wheeler and Tiefelsdorf (2005).
+
+As Fotheringham et al. (2002) describe, GWR can also be applied in a GLM framework, and a provisional implementation permitting this has been added to the spgwr package providing both cross-validation bandwidth selection and geographically weighted fitting of GLM models.
+
+```{r, comment=NA}
+gbwG <- ggwr.sel(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + offset(log(POP8)), 
+                 data = NY8, family = "poisson", gweight = gwr.Gauss, verbose = FALSE)
+ggwrG <- ggwr(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + offset(log(POP8)), 
+              data = NY8, family = "poisson", bandwidth = gbwG, gweight = gwr.Gauss)
+ggwrG
+```
+
+The local coefficient variation seen in this fit is not large either, although from **Figure 10.7** it appears that slightly larger local coefficients for the closeness to TCE site covariate are found farther away from TCE sites than close to them. If, on the other hand, we consider this indication in the light of **Figure 10.8**, it is clear that the forcing artifacts found by Wheeler and Tiefelsdorf (2005) in a different data set are replicated here.
+
+Further ways of using R for applying different methods for modeling areal data are presented in Chapter 11. It is important to remember that the availability of implementations of methods does not mean that any of them are ‘best practice’ as such. It is the analyst who has responsibility for choices of methods and implementations in relation to situation-specific requirements and available data. What the availability of a range of methods in R does make possible is that the analyst has choice and has tools for ensuring that the research outcomes are fully reproducible.
+
+**Figure 10.7**. GWR local coefficient estimates for the exposure to TCE site covariate
+
+**Figure 10.8**. Pairs plots of GWR local coefficient estimates showing the effects of GWR collinearity forcing
+
+[1] The fitted coefficient values of the weighted CAR model do not exactly reproduce those of Waller and Gotway (2004, page 379), although the spatial coefficient is reproduced. In addition, the model cannot be fit with S-PLUS SpatialStats module slm, as the product of the two components of the model covariance matrix is not symmetric, while the two components taken separately are. This suggests that caution in using current implementations of weighted CAR models is justified.
+
+[2] Full details of the test procedures can be found in the references to the function documentation in lmtest and sandwich.
+
+[3] They report that results from PROC GLIMMIX in SAS can be reproduced using only a single group.

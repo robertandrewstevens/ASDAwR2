@@ -1,0 +1,1114 @@
+---
+title: "sawr08"
+author: "Robert A. Stevens"
+date: "December 31, 2016"
+output: html_document
+---
+
+```{r, comment=NA}
+library(lattice)
+library(sp)
+library(gstat)
+library(geoR)
+library(MASS)
+```
+
+*Applied Spatial Data Analysis with R* by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
+
+# 8 Interpolation and Geostatistics
+
+## 8.1 Introduction
+
+Geostatistical data are data that could in principle be measured anywhere, but that typically come as measurements at a limited number of observation locations: think of gold grades in an ore body or particulate matter in air samples. The pattern of observation locations is usually not of primary interest, as it often results from considerations ranging from economical and physical constraints to being ‘representative’ or random sampling varieties. The interest is usually in inference of aspects of the variable that have not been measured such as maps of the estimated values, exceedence probabilities or estimates of aggregates over given regions, or inference of the process that generated the data. Other problems include monitoring network optimization: where should new observations be located or which observation locations should be removed such that the operational value of the monitoring network is maximized.
+
+Typical spatial problems where geostatistics are used are the following:
+
+- The estimation of ore grades over mineable units, based on drill hole data
+
+- Interpolation of environmental variables from sample or monitoring network data (e.g. air quality, soil pollution, ground water head, hydraulic
+conductivity)
+
+- Interpolation of physical or chemical variables from sample data
+
+- Estimation of spatial averages from continuous, spatially correlated data
+
+In this chapter we use the Meuse data set used by Burrough and McDonnell (1998). The notation we use follows mostly that of Christensen (1991), as this text most closely links geostatistics to linear model theory. Good texts on geostatistics are Chiles and Delfiner (1999), Christensen (1991), Cressie (1993), and Journel and Huijbregts (1978). More applied texts are, for example Isaaks and Strivastava (1989), Goovaerts (1997), and Deutsch and Journel (1992).
+
+Geostatistics deals with the analysis of random fields Z(s), with Z random and s the non-random spatial index. Typically, at a limited number of sometimes arbitrarily chosen sample locations, measurements on Z are available, and prediction (interpolation) of Z is required at non-observed locations s0, or the mean of Z is required over a specific region B0. Geostatistical analysis involves estimation and modeling of spatial correlation (covariance or semivariance), and evaluating whether simplifying assumptions such as stationarity can be justified or need refinement. More advanced topics include the conditional simulation of Z(s), for example over locations on a grid, and model-based inference, which propagates uncertainty of correlation parameters through spatial predictions or simulations.
+
+Much of this chapter will deal with package gstat, because it offers the widest functionality in the geostatistics curriculum for R: it covers variogram cloud diagnostics, variogram modeling, everything from global simple kriging to local universal cokriging, multivariate geostatistics, block kriging, indicator and Gaussian conditional simulation, and many combinations. Other R packages that provide additional geostatistical functionality are mentioned where relevant, and discussed at the end of this chapter.
+
+## 8.2 Exploratory Data Analysis
+
+Spatial exploratory data analysis starts with the plotting of maps with a measured variable. To express the observed value, we can use colour or symbol size,
+
+```{r, comment=NA}
+data(meuse)
+coordinates(meuse) <- c("x", "y")
+spplot(meuse, "zinc", do.log = T)
+bubble(meuse, "zinc", do.log = T, key.space = "bottom")
+```
+
+to produce plots with information similar to that of **Figure 3.8**.
+
+The evident structure here is that zinc concentration is larger close to the river Meuse banks. In case of an evident spatial trend, such as the relation between top soil zinc concentration and distance to the river here, we can also plot maps with fitted values and with residuals (Cleveland, 1993), as shown
+in **Figure 8.1**, obtained by
+
+```{r, comment=NA}
+xyplot(log(zinc) ~ sqrt(dist), as.data.frame(meuse))
+zn.lm <- lm(log(zinc) ~ sqrt(dist), meuse)
+meuse$fitted.s <- predict(zn.lm, meuse) - mean(predict(zn.lm, meuse))
+meuse$residuals <- residuals(zn.lm)
+spplot(meuse, c("fitted.s", "residuals"))
+```
+
+**Figure 8.1**. Zinc as a function of distance to river (left), and fitted-residual maps (fitted.s: mean subtracted) for the linear regression model of log zinc and square-root transformed distance to the river
+
+where the formula y ∼ x indicates dependency of y on x. This figure reveals that although the trend removes a large part of the variability, the residuals do not appear to behave as spatially unstructured or white noise: residuals with a similar value occur regularly close to another. More exploratory analysis will take place when we further analyze these data in the context of geostatistical models; first we deal with simple, non-geostatistical interpolation approaches.
+
+## 8.3 Non-Geostatistical Interpolation Methods
+
+Usually, interpolation is done on a regular grid. For the Meuse data set, coordinates of points on a regular grid are already defined in the meuse.grid data.frame, and are converted into a SpatialPixelsDataFrame by
+
+```{r, comment=NA}
+data(meuse.grid)
+coordinates(meuse.grid) <- c("x", "y")
+meuse.grid <- as(meuse.grid, "SpatialPixelsDataFrame")
+```
+
+Alternatively, we could interpolate to individual points, sets of irregularly distributed points, or to averages over square or irregular areas (Section 8.5.6).
+
+### 8.3.1 Inverse Distance Weighted Interpolation
+
+Inverse distance-based weighted interpolation (IDW) computes a weighted average,
+
+    Zˆ(s0) = sum(w(s[i])*Z(s[i]), i = 1:n)/sum(w(s[i]), i = 1:n)
+
+where weights for observations are computed according to their distance to the interpolation location,
+
+    w(s[i]) = ||si − s0||^(−p)
+
+with ||·|| indicating Euclidean distance and p an inverse distance weighting power, defaulting to 2. If s0 coincides with an observation location, the observed value is returned to avoid infinite weights.
+
+The inverse distance power determines the degree to which the nearer point(s) are preferred over more distant points; for large values IDW converges to the one-nearest-neighbor interpolation. It can be tuned, for example using cross validation (Section 8.6.1). IDW can also be used within local search neighborhoods (Section 8.5.5).
+
+```{r, comment=NA}
+idw.out <- idw(zinc ~ 1, meuse, meuse.grid, idp = 2.5)
+as.data.frame(idw.out)[1:5, ]
+```
+
+The output variable is called var1.pred, and the var1.var values are NA because inverse distance does not provide prediction error variances.
+
+Inverse distance interpolation results usually in maps that are very similar to kriged maps when a variogram with no or a small nugget is used. In contrast to kriging, by only considering distances to the prediction location it ignores the spatial configuration of observations; this may lead to undesired effects if the observation locations are strongly clustered. Another difference is that weights are guaranteed to be between 0 and 1, resulting in interpolated values never outside the range of observed values.
+
+### 8.3.2 Linear Regression
+
+For spatial prediction using simple linear models, we can use the R function lm:
+
+```{r, comment=NA}
+zn.lm <- lm(log(zinc) ~ sqrt(dist), meuse)
+meuse.grid$pred <- predict(zn.lm, meuse.grid)
+meuse.grid$se.fit <- predict(zn.lm, meuse.grid, se.fit = TRUE)$se.fit
+```
+
+Alternatively, the predict method used here can provide the prediction or confidence intervals for a given confidence level. Alternatively, we can use the function krige in gstat for this,
+
+```{r, comment=NA}
+meuse.lm <- krige(log(zinc) ~ sqrt(dist), meuse, meuse.grid)
+```
+
+that in this case does not krige as no variogram is specified, but uses linear regression.
+
+Used in this form, the result is identical to that of lm. However, it can also be used to predict with regression models that are refitted within local neighborhoods around a prediction location (Section 8.5.5) or provide mean predicted values for spatial areas (Section 8.5.6). The variance it returns is the prediction error variance when predicting for points or the estimation error variance when used for blocks.
+
+A special form of linear regression is obtained when polynomials of spatial coordinates are used for predictors, for example for a second-order polynomial
+
+```{r, comment=NA}
+meuse.tr2 <- krige(log(zinc) ~ 1, meuse, meuse.grid, degree = 2)
+```
+
+This form is called trend surface analysis.
+
+It is possible to use lm for trend surface analysis, for example for the second-order trend with a formula using I to treat powers and products ‘as is’: 
+
+```{r, comment=NA}
+lm(log(zinc) ~ I(x^2) + I(y^2) + I(x*y) + x + y, meuse)
+```
+
+or the short form
+
+```{r, comment=NA}
+lm(log(zinc) ~ poly(x, y, 2), meuse)
+```
+
+It should be noted that for lm, the first form does not standardize coordinates, which often yields huge numbers when powered, and that the second form does standardize coordinates in such a way that it cannot be used in a subsequent predict call with different coordinate ranges. Also note that trend surface fitting is highly sensitive to outlying observations. Another place to look for trend surface analysis is function surf.ls in package spatial.
+
+## 8.4 Estimating Spatial Correlation: The Variogram
+
+In geostatistics the spatial correlation is modeled by the variogram instead of a correlogram or covariogram, largely for historical reasons. Here, the word variogram will be used synonymously with semivariogram. The variogram plots semivariance as a function of distance.
+
+In standard statistical problems, correlation can be estimated from a scatterplot, when several data pairs {x, y} are available. The spatial correlation between two observations of a variable z(s) at locations s1 and s2 cannot be estimated, as only a single pair is available. To estimate spatial correlation from observational data, we therefore need to make stationarity assumptions before we can make any progress. One commonly used form of stationarity is intrinsic stationarity, which assumes that the process that generated the samples is a random function Z(s) composed of a mean and residual
+
+    Z(s) = m + e(s)  (8.1)
+
+with a constant mean
+
+    E(Z(s)) = m  (8.2)
+
+and a variogram defined as
+
+    γ(h) = (1/2)*E(Z(s) − Z(s + h))^2  (8.3)
+
+Under this assumption, we basically state that the variance of Z is constant, and that spatial correlation of Z does not depend on location s, but only on separation distance h. Then, we can form multiple pairs {z(s[i]), z(s[j])} that have (nearly) identical separation vectors h = s[i] − s[j] and estimate correlation from them. If we further assume isotropy, which is direction independence of semivariance, we can replace the vector h with its length, ||h||.
+
+Under this assumption, the variogram can be estimated from Nh sample data pairs z(s[i]), z(s[i] + h) for a number of distances (or distance intervals) h ̃[j] by
+
+    γˆ(h ̃[j])= (1/(2*N[h]))*sum((Z(s[i]) − Z(s[i] + h))^2, i = 1:N[h]), ∀ h ∈ h ̃[j]  (8.4)
+
+and this estimate is called the sample variogram.
+
+A wider class of models is obtained when the mean varies spatially, and can, for example be modeled as a linear function of known predictors X[j](s), as in
+
+    Z(s) = sum(X[j](s)*β[j], j = 0:p) + e(s) = X*β + e(s)  (8.5)
+
+with X[j](s) the known spatial regressors and β[j] unknown regression coefficients, usually containing an intercept for which X0(s) ≡ 1. The X[j](s) form the columns of the n×(p + 1) design matrix X, β is the column vector with p + 1 unknown coefficients.
+
+For varying mean models, stationarity properties refer to the residual e(s), and the sample variogram needs to be computed from estimated residuals.
+
+### 8.4.1 Exploratory Variogram Analysis
+
+A simple way to acknowledge that spatial correlation is present or not is to make scatter plots of pairs Z(s[i]) and Z(s[j]), grouped according to their separation distance h[i, j] = ||s[i] − s[j]||. This is done for the meuse data set in **Figure 8.2**, by
+
+```{r, comment=NA}
+hscat(log(zinc) ~ 1, meuse, (0:9) * 100)
+```
+
+where the strip texts indicate the distance classes, and sample correlations are shown in each panel.
+
+A second way to explore spatial correlation is by plotting the variogram and the variogram cloud. The variogram cloud is obtained by plotting all possible squared differences of observation pairs (Z(s[i]) − Z(s[j]))^2 against their separation distance h[i, j]. One such variogram cloud, obtained by
+
+```{r, comment=NA}
+variogram(log(zinc) ~ 1, meuse, cloud = TRUE)
+```
+
+**Figure 8.2**. Lagged scatter plot for the log-zinc data in the meuse data set 
+
+is plotted in **Figure 8.3** (top). The plot shows a lot of scatter, as could be expected: when Z(s) follows a Gaussian distribution, (Z(s[i]) − Z(s[j]))^2 follows a χ2(1) distribution. It does show, however, some increase of maximum values for distances increasing up to 1,000 m.
+
+Essentially, the sample variogram plot of (8.4) obtained by
+
+```{r, comment=NA}
+plot(variogram(log(zinc) ~ 1, meuse))
+```
+
+is nothing but a plot of averages of semivariogram cloud values over distance intervals h; it is shown in **Figure 8.3**, bottom. It smooths the variation in the variogram cloud and provides an estimate of semivariance (8.3), although Stein (1999) discourages this approach.
+
+The ~ 1 defines a single constant predictor, leading to a spatially constant mean coefficient, in accordance with (8.2); see page 26 for a presentation of formula objects.
+
+As any point in the variogram cloud refers to a pair of points in the data set, the variogram cloud can point us to areas with unusual high or low variability. To do that, we need to select a subset of variogram cloud points. In
+
+```{r, comment=NA}
+sel <- plot(variogram(zinc ~ 1, meuse, cloud = TRUE), digitize = TRUE)
+plot(sel, meuse)
+```
+
+**Figure 8.3**. Variogram cloud (top) and sample variogram (bottom) for log-zinc data; numbers next to symbols refer to the value Nh in (8.4)
+
+the user is asked to digitize an area in the variogram cloud plot after the first command. The second command plots the selected point pairs on the observations map. **Figure 8.4** shows the output plots of such a session. The point pairs with largest semivariance at short distances were selected, because they indicate the areas with the strongest gradients. The map shows that these areas are not spread randomly: they connect the maximum values closest to the Meuse river with values usually more inland. This can be an indication of non-stationarity or of anisotropy. Log-transformation or detrending may remove this effect, as we see later.
+
+In case of outlying observations, extreme variogram cloud values are easily identified to find the outliers. These may need removal, or else robust measures for the sample variogram can be computed by passing the logical argument cressie = TRUE to the variogram function call (Cressie, 1993).
+
+A sample variogram γˆ(h) always contains a signal that results from the true variogram γ(h) and a sampling error, due to the fact that Nh and s are not infinite. To verify whether an increase in semivariance with distance could possibly be attributed to chance, we can compute variograms from the same data, after randomly reassigning measurements to spatial locations. If the sample variogram falls within the (say 95%) range of these random variograms, complete spatial randomness of the underlying process may be a plausible hypothesis. **Figure 8.5** shows an example of such a plot for the log zinc data; here the hypothesis of absence of spatial correlation seems unlikely. In general, however, concluding or even assuming that an underlying process is completely spatially uncorrelated is quite unrealistic for real, natural processes. A common case is that the spatial correlation is difficult to infer from sample data, because of their distribution, sample size, or spatial configuration. In certain cases spatial correlation is nearly absent.
+
+**Figure 8.4**. Interactively selected point pairs on the variogram cloud (left) and map of selected point pairs (right)
+
+**Figure 8.5**. Sample variogram (bold) compared to 100 variograms for randomly reallocated data (grey lines)
+
+### 8.4.2 Cutoff, Lag Width, Direction Dependence
+
+Although the command
+
+```{r, comment=NA}
+plot(variogram(log(zinc) ~ 1, meuse))
+```
+
+simply computes and plots the sample variogram, it does make a number of decisions by default. It decides that direction is ignored: point pairs are merged on the basis of distance, not direction. An alternative is, for example to look in four different angles, as in
+
+```{r, comment=NA}
+plot(variogram(log(zinc) ~ 1, meuse, alpha = c(0, 45, 90, 135)))
+```
+
+see **Figure 8.7**. Directions are now divided over their principal direction, e.g., any point pair between 22.5◦ and 67.5◦ is used for the 45◦ panel. You might want to split into a finer direction subdivision, for example passing alpha = seq(0,170,10), but then the noise component of resulting sample variograms will increase, as the number of point pairs for each separate estimate decreases.
+
+A similar issue is the cutoff distance, which is the maximum distance up to which point pairs are considered and the width of distance interval over which point pairs are averaged in bins.
+
+The default value gstat uses for the cutoff value is one third of the largest diagonal of the bounding box (or cube) of the data. Just as for time series data autocorrelations are never computed for lags farther than half the series length, there is little point in computing semivariances for long distances other than mere curiosity: wild oscillations usually show up that reveal little about the process under study. Good reasons to decrease the cutoff may be when a local prediction method is foreseen, and only semivariances up to a rather small distance are required. In this case, the modeling effort, and hence the computing of sample variograms should be limited to this distance (e.g. twice the radius of the planned search neighborhood).
+
+For the interval width, gstat uses a default of the cutoff value divided by 15. Usually, these default values will result in some initial overview of the spatial correlation. Choosing a smaller interval width will result in more detail, as more estimates of γ(h) appear, but also in estimates with more noise, as Nh inevitably decreases. It should be noted that apparent local fluctuations of consecutive γˆ(h) values may still be attributed to sampling error. The errors γˆ(h[i]) − γ(hi) and γˆ(h[j]) − γ(h[j]) will be correlated, because γ(hˆ[i]) and γ(hˆ[j]) usually share a large number of common points used to form pairs.
+
+The default cutoff and interval width values may not be appropriate at all, and can be overridden, for example by
+
+```{r, comment=NA}
+plot(variogram(log(zinc) ~ 1, meuse, cutoff = 1000, width = 50))
+```
+
+The distance vector does not have to be cut in regular intervals; one can specify each interval by
+
+```{r, comment=NA}
+variogram(log(zinc) ~ 1, meuse, boundaries = c(0, 50, 100, seq(250, 1500, 250)))
+```
+
+which is especially useful for data sets that have much information on short distance variability: it allows one to zoom in on the short distance variogram without revealing irrelevant details for the longer distances.
+
+### 8.4.3 Variogram Modeling
+
+The variogram is often used for spatial prediction (interpolation) or simulation of the observed process based on point observations. To ensure that predictions are associated with non-negative prediction variances, the matrix with semivariance values between all observation points and any possible prediction point needs to be non-negative definite. For this, simply plugging in sample variogram values from (8.4) is not sufficient. One common way is to infer a parametric variogram model from the data. A non-parametric way, using smoothing and cutting off negative frequencies in the spectral domain, is given in Yao and Journel (1998); it will not be discussed here.
+
+The traditional way of finding a suitable variogram model is to fit a parametric model to the sample variogram (8.4). An overview of the basic variogram models available in gstat is obtained by
+
+```{r, comment=NA}
+show.vgms()
+show.vgms(model = "Mat", kappa.range = c(0.1, 0.2, 0.5, 1, 2, 5, 10), max = 10)
+```
+
+where the second command gives an overview of various models in the Matern class.
+
+In gstat, valid variogram models are constructed by using one or combinations of two or more basic variogram models. Variogram models are derived from data.frame objects, and are built as follows:
+
+```{r, comment=NA}
+vgm(1, "Sph", 300)
+vgm(1, "Sph", 300, 0.5)
+v1 <- vgm(1, "Sph", 300, 0.5)
+v2 <- vgm(0.8, "Sph", 800, add.to = v1) 
+v2
+vgm(0.5, "Nug", 0)
+```
+
+and so on. Each component (row) has a model type (‘Nug’, ‘Sph’, ...), followed by a partial sill (the vertical extent of the model component) and a range parameter (the horizontal extent). Nugget variance can be defined in two ways, because it is almost always present. It reflects usually measurement error and/or micro-variability. Note that gstat uses range parameters, for example for the exponential model with partial sill c and range parameter a
+
+    γ(h) = c(1 − exp(−h/a))
+
+This implies that for this particular model the practical range, the value at which this model reaches 95% of its asymptotic value, is 3a; for the Gaussian model the practical range is sqrt(3a). A list of model types is obtained by 
+
+```{r, comment=NA}
+vgm()
+```
+
+Not all of these models are equally useful, in practice. Most practical studies have so far used exponential, spherical, Gaussian, Matern, or power models, with or without a nugget, or a combination of those.
+
+For weighted least squares fitting a variogram model to the sample variogram (Cressie, 1985), we need to take several steps:
+
+1. Choose a suitable model (such as exponential, ...), with or without nugget 
+
+2. Choose suitable initial values for partial sill(s), range(s), and possibly nugget
+
+3. Fit this model, using one of the fitting criteria.
+
+For the variogram obtained by
+
+```{r, comment=NA}
+v <- variogram(log(zinc) ~ 1, meuse)
+plot(v)
+```
+
+**Figure 8.6**. Sample variogram (plus) and fitted model (dashed line) 
+
+and shown in **Figure 8.6**, the spherical model looks like a reasonable choice. Initial values for the variogram fit are needed for fit.variogram, because for the spherical model (and many other models) fitting the range parameter involves non-linear regression. The following fit works:
+
+```{r, comment=NA}
+fit.variogram(v, vgm(1, "Sph", 800, 1))
+```
+
+but if we choose initial values too far off from reasonable values, as in
+
+```{r, comment=NA}
+fit.variogram(v, vgm(1, "Sph", 10, 1))
+```
+
+the fit will not succeed. To stop execution in an automated fitting script, a construct like
+
+```{r, comment=NA}
+v.fit <- fit.variogram(v, vgm(1, "Sph", 10, 1))
+if(attr(v.fit, "singular")) stop("singular fit")
+```
+
+will halt the procedure on this fitting problem.
+
+The fitting method uses non-linear regression to fit the coefficients. For this, a weighted sum of square errors sum(w[j]*(γ(h) − γˆ(h))^2, j = 1:p), with γ(h) the value according to the parametric model, is minimized. The optimization routine alternates the following two steps until convergence: (i) a direct fit over the partial sills, and (ii) non-linear optimizing of the range parameter(s) given the last fit of partial sills. The minimized criterion is available as
+
+```{r, comment=NA}
+attr(v.fit, "SSErr")
+```
+
+Table 8.1. Values for argument fit.method in function fit.variogram
+
+fit.method Weight  
+---------- ----------------  
+1          N[j]  
+2          N[j]/{γ(h[j])}^2  
+6          1  
+7          N[j]/h[j]^2  
+
+Different options for the weights wj are given in Table 8.1, the default value chosen by gstat is 7. Two things should be noted: (i) for option 2, the weights change after each iteration, which may confuse the optimization routine, and (ii) for the linear variogram with no nugget, option 7 is equivalent to option 2. Option 7 is default as it seems to work in many cases; it will, however, give rise to spurious fits when a sample semivariance estimate for distance (very close to) zero gives rise to an almost infinite weight. This may happen when duplicate observations are available.
+
+An alternative approach to fitting variograms is by visual fitting, the so-called eyeball fit. Package geoR provides a graphical user interface for interactively adjusting the parameters:
+
+```{r, comment=NA}
+v.eye <- eyefit(variog(as.geodata(meuse["zinc"]), max.dist = 1500)) 
+ve.fit <- as.vgm.variomodel(v.eye[[1]])
+```
+
+The last function converts the model saved in v.eye to a form readable by gstat.
+
+Typically, visual fitting will minimize |γ(h) − γˆ(h)| with emphasis on short distance/small γ(h) values, as opposed to a weighted squared difference, used by most numerical fitting. An argument to prefer visual fitting over numerical fitting may be that the person who fits has knowledge that goes beyond the information in the data. This may for instance be related to information about the nugget effect, which may be hard to infer from data when sample locations are regularly spread. Information may be borrowed from other studies or derived from measurement error characteristics for a specific device. In that case, one could, however, also consider partial fitting, by keeping, for example the nugget to a fixed value.
+
+Partial fitting of variogram coefficients can be done with gstat. Suppose we know for some reason that the partial sill for the nugget model (i.e. the nugget variance) is 0.06, and we want to fit the remaining parameters, then this is done by
+
+```{r, comment=NA}
+fit.variogram(v, vgm(1, "Sph", 800, 0.06), fit.sills = c(FALSE, TRUE))
+```
+
+Alternatively, the range parameter(s) can be fixed using argument fit.ranges. 
+
+Maximum likelihood fitting of variogram models does not need the sample variogram as intermediate form, as it fits a model directly to a quadratic form of the data, that is the variogram cloud. REML (restricted maximum likelihood) fitting of only partial sills, not of ranges, can be done using gstat
+function fit.variogram.reml:
+
+```{r, comment=NA}
+fit.variogram.reml(log(zinc) ~ 1, meuse, model = vgm(0.6, "Sph", 800, 0.06))
+```
+
+Full maximum likelihood or restricted maximum likelihood fitting of variogram models, including the range parameters, can be done using function likfit in package geoR, or with function fitvario in package RandomFields. Maximum likelihood fitting is optimal under the assumption of a Gaussian random field, and can be very time consuming for larger data sets.
+
+### 8.4.4 Anisotropy
+
+Anisotropy may be modeled by defining a range ellipse instead of a circular or spherical range. In the following example
+
+```{r, comment=NA}
+v.dir <- variogram(log(zinc) ~ 1, meuse, alpha = (0:3)*45)
+v.anis <- vgm(0.6, "Sph", 1600, 0.05, anis = c(45, 0.3))
+plot(v.dir, v.anis)
+```
+
+the result of which is shown in **Figure 8.7**, for four main directions. The fitted model has a range in the principal direction (45◦, NE) of 1,600, and of 0.3 × 1,600 = 480 in the minor direction (135◦).
+
+When more measurement information is available, one may consider plotting a variogram map, as in
+
+**Figure 8.7**. Directional sample variogram (plus) and fitted model (dashed line) for four directions (0 is North, 90 is East)
+
+```{r, comment=NA}
+plot(variogram(log(zinc) ~ 1, meuse, map = TRUE, cutoff = 1000, width = 100))
+```
+
+which bins h vectors in square grid cells over x and y, meaning that distance and direction are shown in much more detail. Help is available for the plotting function plot.variogramMap.
+
+Package gstat does not provide automatic fitting of anisotropy parameters. Function likfit in geoR does, by using (restricted) maximum likelihood.
+
+### 8.4.5 Multivariable Variogram Modeling
+
+We use the term multivariable geostatistics here for the case where multiple dependent spatial variables are analyzed jointly. The case where the trend of a single dependent variable contains more than a constant only is not called multivariable in this sense, and will be treated in Section 8.5.
+
+The main tool for estimating semivariances between different variables is the cross variogram, defined for collocated [1] data as
+
+    γ[i, j](h) = E[(Z[i](s) − Z[i](s + h))(Z[j](s) − Z[j](s + h))] 
+
+and for non-collocated data as
+
+    γ[i, j](h) = E[(Z[i](s) − m[i])(Z[j](s) − m[j])]
+
+with m[i] and m[j] the means of the respective variables. Sample cross variograms are the obvious sums over the available pairs or cross pairs, in the line of (8.4). 
+
+As multivariable analysis may involve numerous variables, we need to start organizing the available information. For that reason, we collect all the observation data specifications in a gstat object, created by the function gstat. This function does nothing else than ordering (and actually, copying) information needed later in a single object. Consider the following definitions of four heavy metals:
+
+```{r, comment=NA}
+g <- gstat(NULL, "logCd", log(cadmium) ~ 1, meuse) 
+g <- gstat(g, "logCu", log(copper) ~ 1, meuse)
+g <- gstat(g, "logPb", log(lead) ~ 1, meuse)
+g <- gstat(g, "logZn", log(zinc) ~ 1, meuse)
+g
+vm <- variogram(g)
+vm.fit <- fit.lmc(vm, g, vgm(1, "Sph", 800, 1))
+plot(vm, vm.fit)
+```
+
+**Figure 8.8**. Direct variograms (diagonal) and cross variograms (off-diagonal) along with fitted linear model of coregionalization (dashed line)
+
+the plot of which is shown in **Figure 8.8**. By default, variogram when passing a gstat object computes all direct and cross variograms, but this can be turned off. The function fit.lmc fits a linear model of co-regionalization, which is a particular model that needs to have identical model components (here nugget, and spherical with range 800), and needs to have positive definite partial sill matrices, to ensure non-negative prediction variances when used for spatial prediction (cokriging).
+
+As the variograms in **Figure 8.8** indicate, the variables have a strong cross correlation. Because these variables are collocated, we could compute direct correlations:
+
+```{r, comment=NA}
+cor(as.data.frame(meuse)[c("cadmium", "copper", "lead", "zinc")])
+```
+
+which confirm this, but ignore spatial components. For non-collocated data, the direct correlations may be hard to compute.
+
+The fit.lmc function fits positive definite coefficient matrices by first fitting models individually (while fixing the ranges) and then replacing non-positive definite coefficient matrices by their nearest positive definite approximation, taking out components that have a negative eigenvalue. When eigenvalues of exactly zero occur, a small value may have to be added to the direct variogram sill parameters; use the correct.diagonal argument for this.
+
+Variables do not need to have a constant mean but can have a trend function specified, as explained in Section 8.4.6.
+
+### 8.4.6 Residual Variogram Modeling
+
+Residual variograms are calculated by default when a more complex model for the trend is used, for example as in
+
+```{r, comment=NA}
+variogram(log(zinc) ~ sqrt(dist), meuse)
+```
+
+where the trend is simple linear (**Figure 8.1**), for example reworking (8.5) to
+
+    log(Z(s)) = β0 + sqrt(D(s))*β1 + e(s)
+
+with D(s) the distance to the river. For defining trends, the full range of R formulas can be used: the right-hand side may contain factors, in which case trends are calculated with respect to the factor level means, and may contain interactions of all sorts; see page 26 for explanation on S formula syntax.
+
+By default, the residuals gstat uses are ordinary least squares residuals (i.e. regular regression residuals), meaning that for the sake of estimating the trend, observations are considered independent. To honor a dependence structure present, generalized least squares residuals can be calculated instead. For this, a variogram model to define the covariance structure is needed. In the following example
+
+```{r, comment=NA}
+f <- log(zinc) ~ sqrt(dist)
+vt <- variogram(f, meuse)
+vt.fit <- fit.variogram(vt, vgm(1, "Exp", 300, 1)) 
+vt.fit
+g.wls <- gstat(NULL, "log-zinc", f, meuse, model = vt.fit, set = list(gls = 1))
+(variogram(g.wls)$gamma - vt$gamma)/mean(vt$gamma)
+```
+
+it is clear that the difference between the two approaches is marginal, but this does not need to be the case in other examples.
+
+For multivariable analysis, gstat objects can be formed where the trend structure can be specified uniquely for each variable. If multivariable residuals are calculated using weighted least squares, this is done on a per-variable basis, ignoring cross correlations for trend estimation.
+
+## 8.5 Spatial Prediction
+
+Spatial prediction refers to the prediction of unknown quantities Z(s0), based on sample data Z(si) and assumptions regarding the form of the trend of Z and its variance and spatial correlation.
+
+Suppose we can write the trend as a linear regression function, as in (8.5). If the predictor values for s0 are available in the 1 × p row-vector x(s0), V is the covariance matrix of Z(s) and v the covariance vector of Z(s) and Z(s0), then the best linear unbiased predictor of Z(s0) is
+
+    Zˆ(s0) = x(s0)*βˆ + t(v)*inv(V)*(Z(s) − X*βˆ)  (8.6)
+
+with βˆ = inv(t(X)\*inv(V)\*X)\*t(X)\*inv(V)\*Z(s) the generalized least squares estimate of the trend coefficients and where t(X) is the transpose of the design matrix X. The predictor consists of an estimated mean value for location s0, plus a weighted mean of the residuals from the mean function, with weights (v’)\*inv(V), known as the simple kriging weights.
+
+The predictor (8.6) has prediction error variance
+
+    σ^2(s0) = (σ0)^2 − t(v)*inv(V)*v + δ*inv(t(X)*inv(V)*X)*t(δ)  (8.7)
+
+where (σ0)^2 is var(Z(s0)), or the variance of the Z process, and where δ = x(s0) − t(v)\*inv(V)\*X. The term t(v)\*inv(V)\*v is zero if v is zero, that is if all observations are uncorrelated with Z(s0), and equals (σ0)^2 when s0 is identical to an observation location. The third term of (8.7) is the contribution of the estimation error var(βˆ − β) = inv(t(X)\*V\*X) to the prediction (8.6): it is zero if s0 is an observation location, and increases, for example when x(s0) is more distant from X, as when we extrapolate in the space of X.
+
+### 8.5.1 Universal, Ordinary, and Simple Kriging
+
+The instances of this best linear unbiased prediction method with the number of predictors p > 0 are usually called universal kriging. Sometimes the term kriging with external drift is used for the case where p = 1 and X does not include coordinates.
+
+A special case is that of (8.2), for which p = 0 and X0 ≡ 1. The corresponding prediction is called ordinary kriging.
+
+Simple kriging is obtained when, for whatever reason, β is a priori assumed to be known. The known β can then be substituted for βˆ in (8.6). The simple kriging variance is obtained by omitting the third term, which is associated with the estimation error of βˆ in (8.7).
+
+Applying these techniques is much more straightforward than this complicated jargon suggests, as an example will show:
+
+```{r, comment=NA}
+lz.sk <- krige(log(zinc) ~ 1, meuse, meuse.grid, v.fit, beta = 5.9)
+lz.ok <- krige(log(zinc) ~ 1, meuse, meuse.grid, v.fit)
+lz.uk <- krige(log(zinc) ~ sqrt(dist), meuse, meuse.grid, vt.fit)
+```
+
+Clearly, the krige command chooses the kriging method itself, depending on the information it is provided with: are trend coefficients given? is the trend constant or more complex? How this is done is shown in the decision tree of **Figure 8.9**.
+
+Variograms?
+No - Trend functions given?
+  No - Inverse distance weighted interpolation 
+  Yes - (local) trend surface prediction
+Yes - Simulations?
+  No - Trend coefficients given?
+    Yes - Simple (co)kriging
+    No - Trend has only intercept?
+      Yes - Ordinary (co)kriging 
+      No - Universal (co)kriging
+  Yes - indicators?
+    No - Sequential Gaussian (co)simulation
+      Trend coefficients given?
+        Yes - "simple" 
+        No - "universal"
+    Yes - Sequential Indicator (co)simulation
+
+**Figure 8.9**. Decision tree for the gstat predict method
+
+### 8.5.2 Multivariable Prediction: Cokriging
+
+The kriging predictions equations can be simply extended to obtain multivariable prediction equations, see, for example Hoef and Cressie (1993); Pebesma (2004). The general idea is that multiple variables may be cross correlated, meaning that they exhibit not only autocorrelation but that the spatial variability of variable A is correlated with variable B, and can therefore be used for its prediction, and vice versa. Typically, both variables are assumed to be measured on a limited set of locations, and the interpolation addresses unmeasured locations.
+
+The technique is not limited to two variables. For each prediction location, multivariable prediction for q variables yields a q × 1 vector with a prediction for each variable, and a q × q matrix with prediction error variances and covariances from which we can obtain the error correlations:
+
+```{r, comment=NA}
+cok.maps <- predict(vm.fit, meuse.grid)
+names(cok.maps)
+```
+
+Clearly, only the unique matrix elements are stored; to get an overview of the prediction error variance and covariances, a utility function wrapping spplot is available; the output of
+
+```{r, comment=NA}
+spplot.vcov(cok.maps)
+```
+
+is given in **Figure 8.10**.
+
+Before the cokriging starts, gstat reports success in finding a Linear Model of Coregionalization (LMC). This is good, as it will assure non-negative cokriging variances. If this is not the case, for example because the ranges differ,
+
+```{r, comment=NA}
+vm2.fit <- vm.fit
+vm2.fit$model[[3]]$range = c(0, 900) 
+predict(vm2.fit, meuse.grid)
+```
+
+will stop with an error message. Stopping on this check can be avoided by
+
+```{r, comment=NA}
+vm2.fit$set <- list(nocheck = 1)
+x <- predict(vm2.fit, meuse.grid)
+names(as.data.frame(x))
+any(as.data.frame(x)[c(2, 4, 6, 8)] < 0)
+```
+
+**Figure 8.10**. Cokriging variances (diagonal) and covariances (off-diagonal)
+
+which does check for pairwise Cauchy-Schwartz inequalities, that is |γ[i, j](h)| ≤ sqrt(γ[i](h)\*γ[j](h)), but will not stop on violations. Note that this latter check is not sufficient to guarantee positive variances. The final check confirms that we actually did not obtain any negative variances, for this particular case.
+
+### 8.5.3 Collocated Cokriging
+
+Collocated cokriging is a special case of cokriging, where a secondary variable is available at all prediction locations, and instead of choosing all observations of the secondary variable or those in a local neighborhood, we restrict the secondary variable search neighborhood to this single value on the prediction location. For instance, consider log(zinc) as primary and dist as secondary variable:
+
+```{r, comment=NA}
+g.cc <- gstat(NULL, "log.zinc", log(zinc) ~ 1, meuse, model = v.fit)
+meuse.grid$distn <- meuse.grid$dist - mean(meuse.grid$dist) + mean(log(meuse$zinc))
+vd.fit <- v.fit
+vov <- var(meuse.grid$distn)/var(log(meuse$zinc))
+vd.fit$psill <- v.fit$psill*vov
+g.cc <- gstat(g.cc, "distn", distn ~ 1, meuse.grid, nmax = 1, model = vd.fit, 
+              merge = c("log.zinc", "distn"))
+vx.fit <- v.fit
+vx.fit$psill <- sqrt(v.fit$psill * vd.fit$psill) * cor(meuse$dist, log(meuse$zinc))
+g.cc <- gstat(g.cc, c("log.zinc", "distn"), model = vx.fit)
+x <- predict(g.cc, meuse.grid)
+```
+
+**Figure 8.11**. Predictions for collocated cokriging, ordinary kriging, and universal kriging
+
+**Figure 8.11** shows the predicted maps using ordinary kriging, collocated cokriging and universal cokriging, using log(zinc) ∼ sqrt(dist) as trend.
+
+### 8.5.4 Cokriging Contrasts
+
+Cokriging error covariances can be of value when we want to compute functions of multiple predictions. Suppose Z1 is measured on time 1, and Z2 on time 2, and both are non-collocated. When we want to estimate the change Z2 − Z1, we can use the estimates for both moments, but for the error in the change we need in addition the prediction error covariance. The function get.contr helps computing the expected value and error variance for any linear combination (contrast) in a set of predictors, obtained by cokriging. A demo in gstat,
+
+```{r, comment=NA}
+demo(pcb)
+```
+
+gives a full space-time cokriging example that shows how time trends can be estimated for PCB-138 concentration in sea floor sediment, from four consecutive five-yearly rounds of monitoring, using universal cokriging.
+
+### 8.5.5 Kriging in a Local Neighborhood
+
+By default, all spatial predictions method provided by gstat use all available observations for each prediction. In many cases, it is more convenient to use only the data in the neighborhood of the prediction location. The reasons for this may be statistical or computational. Statistical reasons include that the hypothesis of constant mean or mean function should apply locally, or that the assumed knowledge of the variogram is only valid up to a small distance. Computational issues may involve both memory and speed: kriging for n data requires solving an n × n system. For large n (say more than 1,000) this may be too slow, and discarding anything but the closest say 100 observations may not result in notable different predictions.
+
+It should be noted that for global kriging the matrix V needs to be decomposed only once, after which the result is reused for each prediction location to obtain V −1v. Decomposing a linear system of equations is an O(n2) operation, solving another system O(n). Therefore, if a neighborhood size is chosen slightly smaller than the global neighborhood, the computation time may even increase, compared to using a global neighborhood.
+
+Neighborhoods in gstat are defined by passing the arguments nmax, nmin, and/or maxdist to functions like predict, krige, or gstat. Arguments nmax and nmin define a neighborhood size in terms of number of nearest points, maxdist specifies a circular search range to select point. They may be combined: when less than nmin points are found in a search radius, a missing value is generated.
+
+For finding neighborhood selections fast, gstat first builds a PR bucket quadtree, or for three-dimensional data octree search index (Hjaltason and Samet, 1995). With this index it finds any neighborhood selection with only a small number of distance evaluations.
+
+### 8.5.6 Change of Support: Block Kriging
+
+Despite the fact that no measurement can ever be taken on something that has size zero, in geostatistics, by default observations Z(si) are treated as being observed on point location. Kriging a value with a physical size equal to that of the observations is called point kriging. In contrast, block kriging predicts averages of larger areas or volumes. The term block kriging originates from mining, where early geostatistics was developed (Journel and Huijbregts, 1978). In mines, predictions based on bore hole data had to be made for mineable units, which tended to have a block shape. Change of support occurs when predictions are made for a larger physical support based on small physical support observations. There is no particular reason why the larger support needs to have a rectangular shape, but it is common.
+
+Besides the practical relevance to the mining industry, a consideration in many environmental applications has been that point kriging usually exhibits large prediction errors. This is due to the larger variability in the observations. When predicting averages over larger areas, much of the variability (i.e. that within the blocks) averages out and block mean values have lower prediction errors, while still revealing spatial patterns if the blocks are not too large. In environmental problems, legislation may be related to means or medians over larger areas, rather than to point values.
+
+Block kriging (or other forms of prediction for blocks) can be obtained by gstat in three ways:
+
+1. For regular blocks, by specifying a block size
+
+2. For irregular but constant ‘blocks’, by specifying points that discreetness the irregular form
+
+3. For blocks or areas of varying size, by passing an object of class SpatialPolygons to the newdata argument (i.e. replacing meuse.grid) 
+
+Ordinary block kriging for blocks of size 40 × 40 is simply obtained by
+
+```{r, comment=NA}
+lz.ok <- krige(log(zinc) ~ 1, meuse, meuse.grid, v.fit, block = c(40, 40))
+```
+
+For a circular shape with radius 20, centered on the points of meuse.grid, one could select points on a regular grid within a circle:
+
+```{r, comment=NA}
+xy <- expand.grid(x = seq(-20, 20, 4), y = seq(-20, 20, 4))
+xy <- xy[(xy$x^2 + xy$y^2) <= 20^2, ]
+lz.ok <- krige(log(zinc) ~ 1, meuse, meuse.grid, v.fit, block = xy)
+```
+
+For block averages over varying regions, the newdata argument, usually a grid, can be replaced by a polygons object. Suppose meuse.polygons contains polygons for which we want to predict block averages, then this is done by
+
+```{r, comment=NA}
+lz.pols <- krige(log(zinc) ~ 1, meuse, meuse.polygons, v.fit)
+```
+
+To discretize each (top level) Polygons object, coordinates that discretize the polygon are obtained by
+
+```{r, comment=NA}
+spsample(polygon, n = 500, type = "regular", offset = c(0.5, 0.5))
+```
+
+meaning that a regular discretization is sought with approximately 500 points. These default arguments to spsample can be modified by altering the sps.args argument to predict.gstat; spsample is described on page 118.
+
+A much less efficient way to obtain block kriging predictions and prediction errors is to use Gaussian conditional simulation (Section 8.7) over a fine grid, calculate block means from each realization, and obtain the mean and variance from a large number of realizations. In the limit, this should equal the analytical block kriging prediction.
+
+When instead of a block average a non-linear spatial aggregation is required, such as a quantile value of points within a block, or the area fraction of a block where points exceed a threshold (Section 6.6), the simulation path is the more natural approach.
+
+### 8.5.7 Stratifying the Domain
+
+When a categorical variable is available that splits the area of interest in a number of disjoint areas, for example based on geology, soil type, land use or some other factor, we might want to apply separate krigings to the different units. This is called stratified kriging. The reason for doing kriging per-class may be that the covariance structure (semivariogram) is different for the different classes. In contrast to universal kriging with a categorical predictor, no correlation is assumed between residuals from different classes.
+
+The example assumes there is a variable part.a, which partitions the area in two sub-areas, where part.a is 0 and where it is 1. First we can try to find out in which grid cells the observations lie:
+
+```{r, comment=NA}
+meuse$part.a <- idw(part.a ~ 1, meuse.grid, + meuse, nmax = 1)$var1.pred
+```
+
+here, any interpolation may do, as we basically use the first nearest neighbor as predictor. A more robust approach may be to use the overlay method,
+
+```{r, comment=NA}
+meuse$part.a <- meuse.grid$part.a[overlay(meuse.grid, meuse)]
+```
+
+because it will ignore observations not covered by the grid, when present. 
+
+Next, we can perform kriging for each of the sub-domains, store them in x1 and x2, and merge the result using rbind in their non-spatial representation:
+
+```{r, comment=NA}
+x1 <- krige(log(zinc) ~ 1, 
+            meuse[meuse$part.a == 0, ], 
+            meuse.grid[meuse.grid$part.a == 0, ], 
+            model = vgm(0.548, "Sph", 900, 0.0654), 
+            nmin = 20, nmax = 40, maxdist = 1000)
+x2 <- krige(log(zinc) ~ 1, 
+            meuse[meuse$part.a == 1, ], 
+            meuse.grid[meuse.grid$part.a == 1, ], 
+            model = vgm(0.716, "Sph", 900), 
+            nmin = 20, nmax = 40, maxdist = 1000)
+lz.stk <- rbind(as.data.frame(x1), as.data.frame(x2)) 
+coordinates(lz.stk) <- c("x", "y")
+lz.stk <- as(x, "SpatialPixelsDataFrame")
+spplot(lz.stk["var1.pred"], main = "stratified kriging predictions")
+```
+
+### 8.5.8 Trend Functions and their Coefficients
+
+For cases of exploratory data analysis or analysis of specific regression diagnostics, it may be of interest to limit prediction to the trend component x(s0)*βˆ, ignoring the prediction of the residual, that is ignoring the second term in the right-hand side of (8.6). This can be accomplished by setting argument BLUE = TRUE to predict.gstat:
+
+```{r, comment=NA}
+g.tr <- gstat(formula = log(zinc) ~ sqrt(dist), data = meuse, model = v.fit)
+predict(g.tr, meuse[1, ])
+predict(g.tr, meuse[1, ], BLUE = TRUE)
+```
+
+The first output yields the observed value (with zero variance), the second yields the generalized least squares trend component.
+
+If we want to do significance testing of regression coefficients under a full model with spatially correlated residuals, we need to find out what the estimated regression coefficients and their standard errors are. For this, we can use gstat in a debug mode, in which case it will print a lot of information about intermediate calculations to the screen; just try
+
+```{r, comment=NA}
+predict(g, meuse[1, ], BLUE = TRUE, debug = 32)
+```
+
+but this does not allow saving the actual coefficients as data in R. Another way is to ‘fool’ the prediction mode with a specific contrast on the regression coefficients, for example the vector x(s0) = (0, 1), such that x(s0)βˆ = 0\*β0ˆ + 1\*β1ˆ = β1ˆ. Both regression coefficient estimates are obtained by
+
+```{r, comment=NA}
+meuse$Int <- rep(1, 155)
+g.tr <- gstat(formula = log(zinc) ~ -1 + Int + sqrt(dist), data = meuse, model = v.fit)
+rn <- c("Intercept", "beta1")
+df <- data.frame(Int = c(0, 1), dist = c(1, 0), row.names = rn) 
+spdf <- SpatialPointsDataFrame(SpatialPoints(matrix(0, 2, 2)), df)
+spdf
+predict(g.tr, spdf, BLUE = TRUE)
+```
+
+The Int variable is a ‘manual’ intercept to replace the automatic intercept, and the -1 in the formula removes the automatic intercept. This way, we can control it and give it the zero value. The predictions now contain the generalized least squares estimates of the regression model.
+
+### 8.5.9 Non-Linear Transforms of the Response Variable
+
+For predictor variables, a non-linear transform simply yields a new variable and one can proceed as if nothing has happened. Searching for a good transform, such as using sqrt(dist) instead of direct dist values, may help in approaching the relationship with a straight line. For dependent variables this is not the case: because statistical expectation (‘averaging’) is a linear operation, E(g(X)) = g(E(X)) only holds if g(·) is a linear operator. This means that if we compute kriging predictors for zinc on the log scale, we do not obtain the expected zinc concentration by taking the exponent of the kriging predictor.
+
+A large class of monotonous transformations is provided by the Box–Cox family of transformations, which take a value λ:
+
+    f(y, λ) = (y^λ − 1)/λ, if λ != 0
+            = ln(y), if λ = 0
+
+A likelihood profile plot for lambda is obtained by the boxcox method in the package bundle MASS. For example, the plot resulting from 
+
+```{r, comment=NA}
+boxcox(zinc ~ sqrt(dist), data = as.data.frame(meuse))
+```
+
+suggests that a Box–Cox transform with a slightly negative value for λ, for example λ = −0.2, might be somewhat better than log-transforming for those who like their data normal.
+
+Yet another transformation is the normal score transform (Goovaerts, 1997) computed by the function qqnorm, defined as
+
+```{r, comment=NA}
+meuse$zinc.ns <- qqnorm(meuse$zinc, plot.it = FALSE)$x
+```
+
+Indeed, the resulting variable has mean zero, variance close to 1 (exactly one if n is large), and plots a straight line on a normal probability plot. So simple as this transform is, so complex can the back-transform be: it requires linear interpolation between the sample points, and for the extrapolation of values outside the data range the cited reference proposes several different models for tail distributions, all with different coefficients. There seems to be little guidance as how to choose between them based on sample data. It should be noted that back-transforming values outside the data range is not so much a problem with interpolation, as it is with simulation (Section 8.7).
+
+Indicator kriging is obtained by indicator transforming a continuous variable, or reducing a categorical variable to a binary variable. An example for the indicator whether zinc is below 500 ppm is
+
+```{r, comment=NA}
+ind.f <- I(zinc < 500) ~ 1
+ind.fit <- fit.variogram(variogram(ind.f, meuse), vgm(1, "Sph", 800, 1))
+ind.kr <- krige(ind.f, meuse, meuse.grid, ind.fit)
+summary(ind.kr$var1.pred)
+```
+
+Clearly, this demonstrates the difficulty of interpreting the resulting estimates of ones and zeros as probabilities, as one has to deal with negative values and values larger than one.
+
+When it comes to non-linear transformations such as the log transform, the question whether to transform or not to transform is often a hard one. On the one hand, it introduces the difficulties mentioned; on the other hand, transformation solves problems like negative predictions for non-negative variables, and, for example heteroscedasticity: for non-negative variables the variability is larger for areas with larger values, which opposes the stationarity assumption where variability is independent from location.
+
+When a continuous transform is taken, such as the log-transform or the Box–Cox transform, it is possible to back-transform quantiles using the inverse transform. So, under log-normal assumptions the exponent of the kriging mean on the log scale is an estimate of the median on the working scale. From back-transforming a large number of quantiles, the mean value and variance may be worked out.
+
+### 8.5.10 Singular Matrix Errors
+
+Kriging cannot deal with duplicate observations, or observations that share the same location, because they are perfectly correlated, and lead to singular covariance matrices V , meaning that V −1v has no unique solution. Obtaining errors due to a singular matrix is a common case.
+
+```{r, comment=NA}
+meuse.dup <- rbind(as.data.frame(meuse)[1, ], as.data.frame(meuse)) 
+coordinates(meuse.dup) = ~x + y
+krige(log(zinc) ~ 1, meuse.dup, meuse[1, ], v.fit)
+```
+
+will result in the output which points to the C function where the actual error occurred (LDLfactor). The most common case where this happens is when duplicate observations are present in the data set. Duplicate observations can be found by
+
+```{r, comment=NA}
+zd <- zerodist(meuse.dup)
+zd
+krige(log(zinc) ~ 1, meuse.dup[-zd[, 1], ], meuse[1, ], v.fit)
+```
+
+which tells that observations 1 and 2 have identical location; the third command removes the first of the pair. Near-duplicate observations are found by increasing the zero argument of function zerodist to a very small threshold.
+
+Other common causes for singular matrices are the following:
+
+- The use of variogram models that cause observations to have nearly perfect correlation, despite the fact that they do not share the same location, for example from vgm(0, "Nug", 0) or vgm(1, "Gau", 1e20). The Gaussian model is always a suspect if errors occur when it is used; adding a small nugget often helps.
+
+- Using a regression model with perfectly correlated variables; note that, for example a global regression model may lead to singularity in a local neighborhood where a predictor may be constant and correlate perfectly with the intercept, or otherwise perfect correlation occurs.
+
+Stopping execution on singular matrices is usually best: the cause needs to be found and somehow resolved. An alternative is to skip those locations and continue. For instance,
+
+```{r, comment=NA}
+setL <- list(cn_max = 1e+10)
+krige(log(zinc) ~ 1, meuse.dup, meuse[1, ], v.fit, set = setL)
+```
+
+checks whether the estimated condition number for V and t(X)\*inc(V)\*X exceeds 1010, in which case NA values are generated for prediction. Larger condition numbers indicate that a matrix is closer to singular. This is by no means a solution. It will also report whether V or t(X)\*inv(V)\*X are singular; in the latter case the cause is more likely related to collinear regressors, which reside in X.
+
+Near-singularity may not be picked up, and can potentially lead to dramatically bad results: predictions that are orders of magnitude different from the observation data. The causes should be sought in the same direction as real singularity. Setting the cn_max value may help finding where this occurs.
+
+## 8.6 Model Diagnostics
+
+The model diagnostics we have seen so far are fitted and residual plots (for linear regression models), spatial identification of groups of points in the variogram cloud, visual and numerical inspection of variogram models, and visual and numerical inspection of kriging results. Along the way, we have seen many model decisions that needed to be made; the major ones being the following:
+
+- Possible transformation of the dependent variable
+
+- The form of the trend function
+
+- The cutoff, lag width, and possibly directional dependence for the sample variogram
+
+- The variogram model type
+
+- The variogram model coefficient values, or fitting method
+
+- The size and criterion to define a local neighborhood
+
+and we have seen fairly little statistical guidance as to which choices are better. To some extent we can ‘ask’ the data what a good decision is, and for this we may use cross validation. We see that there are some model choices that do not seem very important, and others that cross validation simply cannot inform us about.
+
+### 8.6.1 Cross Validation Residuals
+
+Cross validation splits the data set into two sets: a modeling set and a validation set. The modeling set is used for variogram modeling and kriging on the locations of the validation set, and then the validation measurements can be compared to their predictions. If all went well, cross validation residuals are small, have zero mean, and no apparent structure.
+
+How should we choose or isolate a set for validation? A possibility is to randomly partition the data in a model and test set. Let us try this for the meuse data set, splitting it in 100 observations for modeling and 55 for testing:
+
+```{r, comment=NA}
+sel100 <- sample(1:155, 100)
+m.model <- meuse[sel100, ]
+m.valid <- meuse[-sel100, ]
+v100.fit <- fit.variogram(variogram(log(zinc) ~ 1, m.model), vgm(1, "Sph", 800, 1))
+m.valid.pr <- krige(log(zinc) ~ 1, m.model, m.valid, v100.fit)
+resid.kr <- log(m.valid$zinc) - m.valid.pr$var1.pred 
+summary(resid.kr)
+resid.mean <- log(m.valid$zinc) - mean(log(m.valid$zinc)) 
+R2 <- 1 - sum(resid.kr^2)/sum(resid.mean^2)
+R2
+```
+
+which indicates that kriging prediction is a better predictor than the mean, with an indicative R^2 of 0.72. Running this analysis again will result in different values, as another random sample is chosen. Also note that no visual verification that the variogram model fit is sensible has been applied. A map with cross validation residuals can be obtained by
+
+```{r, comment=NA}
+m.valid.pr$res <- resid.kr
+bubble(m.valid.pr, "res")
+```
+
+
+A similar map is shown for 155 residuals in **Figure 8.12**. Here, symbol size denotes residual size, with symbol area proportional to absolute value.
+
+To use the data to a fuller extent, we would like to use all observations to create a residual once; this may be used to find influential observations. It can be done by replacing the first few lines in the example above with
+
+```{r, comment=NA}
+nfold <- 3
+part <- sample(1:nfold, 155, replace = TRUE) 
+sel <- (part != 1)
+m.model <- meuse[sel, ]
+m.valid <- meuse[-sel, ]
+```
+
+and next define sel = (part != 2), etc. Again, the random splitting brings in a random component to the outcomes. This procedure is threefold cross validation, and it can be easily extended to n-fold cross validation. When n equals the number of observations, the procedure is called leave-one-out cross validation.
+
+A more automated way to do this is provided by the gstat functions krige.cv for univariate cross validation and gstat.cv for multivariable cross validation:
+
+```{r, comment=NA}
+v.fit <- vgm(0.59, "Sph", 874, 0.04)
+cv155 <- krige.cv(log(zinc) ~ 1, meuse, v.fit, nfold = 5)
+bubble(cv155, "residual", main = "log(zinc): 5-fold CV residuals")
+```
+
+the result of which is shown in **Figure 8.12**. It should be noted that these functions do not refit variograms for each fold; usually a variogram is fit on the complete data set, and in that case validation residuals are not completely independent from modeling data, as they already did contribute to the variogram model fitting.
+
+### 8.6.2 Cross Validation z-Scores
+
+The krige.cv object returns more than residuals alone:
+
+```{r, comment=NA}
+summary(cv155)
+```
+
+**Figure 8.12**. Cross validation residuals for fivefold cross validation; symbol size denotes residual magnitude, positive residuals indicate under-prediction
+
+the variable fold shows to which fold each record belonged, and the variable zscore is the z-score, computed as
+
+    z[i] = (Z(s[i]) − Zˆ[i](s[i])/σ[i](s[i])
+
+with Zˆ[i](s[i]) the cross validation prediction for s[i], and σ[i](si) the corresponding kriging standard error. In contrast to standard residuals the z-score takes the kriging variance into account: it is a standardized residual, and if the variogram model is correct, the z-score should have mean and variance values close to 0 and 1. If, in addition, Z(s) follows a normal distribution, so should the z-score do.
+
+### 8.6.3 Multivariable Cross Validation
+
+Multivariable cross validation is obtained using the gstat.cv function:
+
+```{r, comment=NA}
+g.cv <- gstat.cv(g, nmax = 40)
+```
+
+Here, the neighborhood size is set to the nearest 40 observations for computational reasons. With multivariable cross validation, two additional parameters need be considered:
+
+- remove.all = FALSE By default only the first variable is cross-validated, and all other variables are used to their full extent for prediction on the validation locations; if set to TRUE, also secondary data at the validation locations are removed.
+
+- all.residuals = FALSE By default only residuals are computed and returned for the primary variable; if set to TRUE, residuals are computed and returned for all variables.
+
+In a truly multivariable setting, where there is no hierarchy between the different variables to be considered, both should be set to TRUE.
+
+### 8.6.4 Limitations to Cross Validation
+
+Cross validation can be useful to find artifacts in data, but it should be used with caution for confirmatory purposes: one needs to be careful not to conclude that our (variogram and regression) model is correct if cross validation does not lead to unexpected findings. It is for instance not good at finding what is not in the data.
+
+As an example, the Meuse data set does not contain point pairs with a separation distance closer than 40. Therefore, the two variogram models
+
+```{r, comment=NA}
+v1.fit <- vgm(0.591, "Sph", 897, 0.0507)
+v2.fit <- vgm(0.591, "Sph", 897, add.to = vgm(0.0507, "Sph", 40))
+```
+
+that only differ with respect to the spatial correlation at distances smaller than 40 m yield identical cross validation results:
+
+```{r, comment=NA}
+set.seed(13331)
+cv155.1 <- krige.cv(log(zinc) ~ 1, meuse, v1.fit, nfold = 5)
+set.seed(13331)
+cv155.2 <- krige.cv(log(zinc) ~ 1, meuse, v2.fit, nfold = 5)
+summary(cv155.1$residual - cv155.2$residual)
+```
+
+Note that the set.seed(13331) was used here to force identical assignments of the otherwise random folding. When used for block kriging, the behavior of the variogram at the origin is of utmost importance, and the two models yield strongly differing results. As an example, consider block kriging predictions at the meuse.grid cells:
+
+```{r, comment=NA}
+b1 <- krige(log(zinc) ~ 1, meuse, meuse.grid, v1.fit, block = c(40, 40))$var1.var
+b2 <- krige(log(zinc) ~ 1, meuse, meuse.grid, v2.fit, block = c(40, 40))$var1.var
+summary((b1 - b2)/b1)
+```
+
+where some kriging variances drop, but most increase, up to 30% when using the variogram without nugget instead of the one with a nugget. The decision which variogram to choose for distances shorter than those available in the data is up to the analyst, and matters.
+
+## 8.7 Geostatistical Simulation
+
+Geostatistical simulation refers to the simulation of possible realizations of a random field, given the specifications for that random field (e.g. mean structure, residual variogram, intrinsic stationarity) and possibly observation data. Conditional simulation produces realizations that exactly honor observed data at data locations, unconditional simulations ignore observations and only reproduce means and prescribed variability.
+
+Geostatistical simulation is fun to do, to see how much (or little) realizations can vary given the model description and data, but it is a poor means of quantitatively communicating uncertainty: many realizations are needed and there is no obvious ordering in which they can be viewed. They are, however, often needed when the uncertainty of kriging predictions is, for example input to a next level of analysis, and spatial correlation plays a role. An example could be the use of rainfall fields as input to spatially distributed rainfall-runoff models: interpolated values and their variances are of little value, but running the rainfall-runoff model with a large number of simulated rainfall fields may give a realistic assertion of the uncertainty in runoff, resulting from uncertainty in the rainfall field.
+
+Calculating runoff given rainfall and catchment characteristic can be seen as a non-linear spatial aggregation process. Simpler non-linear aggregations are, for example for a given area or block the fraction of the variable that exceeds a critical limit, the 90th percentile within that area, or the actual area where (or its size distribution for which) a measured concentration exceeds a threshold. Simulation can give answers in terms of predictions as well as predictive distributions for all these cases. Of course, the outcomes can never be better than the degree to which the simulation model reflects reality.
+
+### 8.7.1 Sequential Simulation
+
+For simulating random fields, package gstat only provides the sequential simulation algorithm (see, e.g. Goovaerts (1997) for an explanation), and provides this for Gaussian simulation and indicator simulation, possibly multivariable, optionally with simulation of trend components, and optionally for block mean values. Package RandomFields provides a large number of other simulation algorithms.
+
+Sequential simulation proceeds as follows; following a random path through the simulation locations, it repeats the following steps:
+
+1. Compute the conditional distribution given data and previously simulated values, using simple kriging
+
+2. Draw a value from this conditional distribution
+
+3. Add this value to the data set
+
+4. Go to the next unvisited location, and go back to 1
+
+until all locations have been visited. In step 2, either the Gaussian distribution is used or the indicator kriging estimates are used to approximate a conditional distribution, interpreting kriging estimates as probabilities (after some fudging!).
+
+Step 1 of this algorithm will become the most computationally expensive when all data (observed and previously simulated) are used. Also, as the number of simulation nodes is usually much larger than the number of observations, the simulation process will slow down more and more when global neighborhoods are used. To obtain simulations with a reasonable speed, we need to set a maximum to the neighborhood. This is best done with the nmax argument, as spatial data density increases when more and more simulated values are added. For simulation we again use the functions krige or predict.gstat; the argument nsim indicates how many realisations are requested:
+
+```{r, comment=NA}
+lzn.sim <- krige(log(zinc) ~ 1, meuse, meuse.grid, v.fit, + nsim = 6, nmax = 40)
+spplot(lzn.sim)
+```
+
+**Figure 8.13**. Six realizations of conditional Gaussian simulation for log-zinc
+
+the result of which is shown in **Figure 8.13**. It should be noted that these realizations are created following a single random path, in which case the expensive results (inv(V)*v and the neighborhood selection) can be reused. Alternatively, one could use six function calls, each with nsim = 1.
+
+The simulation procedure above also gave the output line drawing 6 GLS realizations of beta..., which confirms that prior to simulation of the field for each realization a trend vector (in this case a mean value only) is drawn from the normal distribution with mean inv(t(X)\*inv(V)\*X)\*t(X)\*inv(V)\*Z(s) and variance inv(t(X)\*inv(V)\*X), that is the generalized least squares estimate and estimation variance. This procedure leads to simulations that have mean and variance equal to the ordinary or universal kriging mean and variance, and that have residual spatial correlation according to the variogram prescribed (Abrahamsen and Benth, 2001). For simulations that omit the simulation of the trend coefficients, the vector β should be passed, for example as beta = 5.9 to the krige function, as with the simple kriging example. In that case, the simulated fields will follow the simple kriging mean and variance.
+
+### 8.7.2 Non-Linear Spatial Aggregation and Block Averages
+
+Suppose the area shown in **Figure 8.14** is the target area for which we want to know the fraction above a threshold; the area being available as a SpatialPolygons object area. We can now compute the distribution of the areal fraction above a cutoff of 500 ppm by simulation:
+
+```{r, comment=NA}
+nsim <- 1000
+cutoff <- 500
+grd <- overlay(meuse.grid, area.sp)
+sel.grid <- meuse.grid[!is.na(grd), ]
+lzn.sim <- krige(log(zinc) ~ 1, meuse, sel.grid, v.fit, nsim = nsim, nmax = 40)
+res <- apply(as.data.frame(lzn.sim)[1:nsim], 2, function(x) mean(x > log(cutoff)))
+hist(res, main = paste("fraction above", cutoff), xlab = NULL, ylab = NULL)
+```
+
+**Figure 8.14**. A non-rectangular area for which a non-linear aggregation is required (left) and distribution of the areal fraction with zinc concentration above 500 ppm
+
+shown in the right-hand side of **Figure 8.14**. Note that if we had been interested in the probability of mean(x) > log(cutoff), which is a rather different issue, then block kriging would have been sufficient:
+
+```{r, comment=NA}
+bkr <- krige(log(zinc) ~ 1, meuse, area.sp, v.fit)
+1 - pnorm(log(cutoff), bkr$var1.pred, sqrt(bkr$var1.var))
+```
+
+Block averages can be simulated directly by supplying the block argument to krige; simulating points and aggregating these to block means may be more efficient because simulating blocks calls for the calculation of many block–block covariances, which involves the computation of quadruple integrals.
+
+### 8.7.3 Multivariable and Indicator Simulation
+
+Multivariable simulation is as easy as cokriging, try
+
+```{r, comment=NA}
+cok.sims <- predict(vm.fit, meuse.grid, nsim = 1000)
+```
+
+after passing the nmax = 40, or something similar to the gstat calls used to build up vm.fit (Section 8.4.5).
+
+Simulation of indicators is done along the same lines. Suppose we want to simulate soil class 1, available in the Meuse data set:
+
+```{r, comment=NA}
+table(meuse$soil)
+s1.fit <- fit.variogram(variogram(I(soil == 1) ~ 1, meuse), vgm(1, "Sph", 800, 1))
+s1.sim <- krige(I(soil == 1) ~ 1, meuse, meuse.grid, s1.fit, nsim = 6, indicators = TRUE, nmax = 40)
+spplot(s1.sim)
+```
+
+**Figure 8.15**. Six realizations of conditional indicator simulation for soil type 1
+
+which is shown in **Figure 8.15**.
+
+## 8.8 Model-Based Geostatistics and Bayesian Approaches
+
+Up to now, we have only seen kriging approaches where it was assumed that the variogram model, fitted from sample data, is assumed to be known when we do the kriging or simulation: any uncertainty about it is ignored. Diggle et al. (1998) give an approach, based on linear mixed and generalized linear mixed models, to provide what they call model-based geostatistical predictions. It incorporates the estimation error of the variogram coefficients.
+
+When is uncertainty of the variogram an important issue? Obviously, when the sample is small, or, for example when variogram modeling is problematic due to the presence of extreme observations or data that come from a strongly skewed distribution.
+
+## 8.9 Monitoring Network Optimization
+
+Monitoring costs money. Monitoring programs have to be designed, started, stopped, evaluated, and sometimes need to be enlarged or shrunken. The difficulty of finding optimal network designs is that a quantitative criterion is often a priori not present. For example, should one focus on mean kriging variances, or variance of some global mean estimator, or rather on the ability to delineate a particular contour?
+
+A very simple approach towards monitoring network optimization is to find the point whose removal leads to the smallest increase in mean kriging variance:
+
+```{r, comment=NA}
+m1 <- sapply(1:155, function(x) mean(krige(log(zinc) ~ 1, meuse[-x, ], meuse.grid, v.fit)$var1.var))
+which(m1 == min(m1))
+```
+
+which will point to observation 72 as the first candidate for removal. Looking at the sorted magnitudes of change in mean kriging variance by
+
+```{r, comment=NA}
+plot(sort(m1))
+```
+
+will reveal that for several other candidate points their removal will have an almost identical effect on the mean variance.
+
+Another approach could be, for example to delineate say the 500ppm contour. We could, for example express the doubt about whether a location is below or above 500 as the closeness of G((Zˆ(s0) − 500)/σ(s0)) to 0.5, with G(·) the Gaussian distribution function.
+
+```{r, comment=NA}
+cutoff <- 1000
+f <- function(x) {
+  kr = krige(log(zinc) ~ 1, meuse[-x, ], meuse.grid, v.fit)
+  mean(abs(pnorm((kr$var1.pred - log(cutoff))/sqrt(kr$var1.var)) - 0.5))
+}
+m2 <- sapply(1:155, f) > which(m2 == max(m2))
+```
+
+**Figure 8.16**. Candidate points for removal. (Left) For mean kriging variance, (right) for delineating the 1,000ppm contour. (Open circles) 10% most favorite points, (closed circles) 10% least favorite points
+
+**Figure 8.16** shows that different objectives lead to different candidate points. Also, deciding based on the kriging variance alone results in an outcome that is highly predictable from the points configuration alone: points in the densest areas are candidate for removal.
+
+For adding observation points, one could loop over a fixed grid and find the point that increases the objective most; this is more work as the number of options for addition are much larger than that for removal. Evaluating on the kriging variance is not a problem, as the observation value does not affect the kriging variance. For the second criterion, it does.
+
+The problem when two or more points have to be added or removed jointly becomes computationally very intensive, as the sequential solution (first the best point, then the second best) is not necessarily equal to the joint solution, for example which configuration of n points is best. Instead of an exhaustive search a more clever optimization strategy such as simulated annealing or a genetic algorithm should be used.
+
+Package fields has a function cover.design that finds a set of points on a finite grid that minimizes a geometric space-filling criterion
+
+## 8.10 Other R Packages for Interpolation and Geostatistics
+
+### 8.10.1 Non-Geostatistical Interpolation
+
+Other interpolation methods may be used, for example based on generalized additive models or smoothers, such as given in package mgcv. Additive models in coordinates without interaction will not yield rotation-invariant solutions, but two-dimensional smoothing splines will. The interested reader is referred to Wood (2006).
+
+Package fields also provides a function Tps, for thin plate (smoothing) splines. Package akima provides interpolation methods based on bilinear or bicubic splines (Akima, 1978).
+
+Package stinepack provides a ‘consistently well behaved method of interpolation based on piecewise rational functions using Stineman’s algorithm’ (Stineman, 1980).
+
+An interpolation method that also has this property but that does take observation configuration into account is natural neighbour interpolation (Sibson, 1981), but this is not available in R.
+
+None of the packages mentioned in this sub-section accept or return data in one of the Spatial classes of package sp.
+
+### 8.10.2 spatial
+
+Package spatial is part of the VR bundle that comes with Venables and Ripley (2002) and is probably one of the oldest spatial packages available in R. It provides calculation of spatial correlation using functions correlogram or variogram. It allows ordinary and universal point kriging over a grid for spherical, exponential, and Gaussian covariance models. For universal kriging predictors it only allows polynomials in the spatial coordinates. Function surf.gls fits a trend surface (i.e. a polynomial in the coordinates) by generalized least squares, and it has a predict method.
+
+### 8.10.3 RandomFields
+
+RandomFields (version 1.3.30) offers sample variogram computation, variogram fitting by least squares or maximum likelihood or restricted maximum likelihood. Simple and ordinary point kriging are provided, and unconditional and conditional simulation using a large variety of modern simulation methods different from sequential simulation, many of them based on spectral methods and Fourier transforms; their abbreviated code is shown as column labels in the table below; an explanation of them is available in the help for PrintMethodList.
+
+A large class of covariance functions was proved, shown as row labels in the table below. Their functional form and literature references are found in the help for PrintModelList:
+
+```{r, comment=NA}
+PrintModelList()
+```
+
+### 8.10.4 geoR and geoRglm
+
+In addition to variogram estimation, variogram model function fitting using least squares or (restricted) maximum likelihood (likfit), and ordinary and universal point kriging, package geoR allows for Bayesian kriging (function krige.bayes of (transformed) Gaussian variables). This requires the user to specify priors for each of the variogram model parameters (but not for the trend coefficients); krige.bayes will then compute the posterior kriging distribution. The function documentation points to a long list of documents that describe the implementation details. The book by Diggle and Ribeiro Jr. (2007) describes more details and gives worked examples.
+
+Package geoR uses its own class for spatial data, called geodata. It contains coercion method for point data in sp format, try, for example
+
+```{r, comment=NA}
+plot(variog(as.geodata(meuse["zinc"]), max.dist = 1500))
+```
+
+Package geoR also has an xvalid function for leave-one-out cross validation that (optionally) allows for reestimating model parameters (trend and variogram coefficients) when leaving out each observation. It also provides the eyefit, for interactive visual fitting of functions to sample variograms (see Section 8.4.3).
+
+Package geoRglm extends package geoR for binomial and Poisson processes, and includes Bayesian and conventional kriging methods for trans-Gaussian processes. It mostly uses MCMC approaches, and may be slow for larger data sets.
+
+### 8.10.5 fields
+
+Package fields is an R package for curve and function fitting with an emphasis on spatial data. The main spatial prediction methods are thin plate splines (function Tps) and kriging (function Krig and krig.image). The kriging functions allow you to supply a covariance function that is written in native code. Functions that are positive definite on a sphere (i.e. for unprojected data) are available. Function cover.design is written for monitoring network optimization.
+
+[1] Each observation location has all variables measured.
