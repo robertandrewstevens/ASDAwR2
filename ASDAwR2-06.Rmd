@@ -23,13 +23,7 @@ setwd("~/GitHub/GIS")
 
 # 6 Customizing Spatial Data Classes and Methods
 
-Although the classes defined in the sp package cover many needs, they do not go far beyond the most typical GIS data models. In applied research, it often happens that customized classes would suit the actual data coming from the instruments better. Since S4 classes have mechanisms for inheritance, it may be attractive to build on the sp classes, so as to utilize their methods where appropriate. Here, we demonstrate a range of different settings in which sp classes can be extended. Naturally, this is only useful for researchers with specific and clear needs, so our goal is to show how (relatively) easy it may be to prototype classes extending sp classes for specific purposes.
-
 ## 6.1 Programming with Classes and Methods
-
-This section explains the elementary basics of programming with classes and methods in R. The S language (implemented in R and S-PLUS) contains two mechanisms for creating classes and methods: the traditional S3 system and the more recent S4 system (see Section 2.2, in which classes were described for the useR – here they are described for the developeR). This chapter is not a full introduction to R programming (see Braun and Murdoch (2007) for more details), but it will try to give some feel of how the Spatial classes in package sp can be extended to be used for wider classes of problems. For full details, the interested reader is referred to, for example, Venables and Ripley (2000) and Chambers (1998), the latter being a reference for new-style S4 classes and methods. Example code is, for example, to be found in the source code for package sp, available from CRAN.
-
-Suppose we define myfun as
 
 ```{r, comment=NA}
 myfun <- function(x) {
@@ -37,19 +31,13 @@ myfun <- function(x) {
 }
 ```
 
-then, calling it with the numbers 1, 2, and 3 results in
-
 ```{r, comment=NA}
 myfun(1:3)
 ```
 
-or alternatively using a named argument:
-
 ```{r, comment=NA}
 myfun(x = 1:3)
 ```
-
-The return value of the function is the last expression evaluated. Often, we want to wrap existing functions, such as a plot function:
 
 ```{r, comment=NA}
 plotXplus2Yminus3 <- function(x, y, ...) {
@@ -57,23 +45,15 @@ plotXplus2Yminus3 <- function(x, y, ...) {
 }
 ```
 
-In this case, the ... is used to pass information to the plot function without explicitly anticipating what it will be: named arguments x and y or the first two arguments if they are unnamed are processed, remaining arguments are passed on. The plot function is a generic method, with an instance that depends on the class of its first (S3) or first n arguments (S4). The available instances of plot are shown for S3-type methods by
-
 ```{r, comment=NA}
 methods("plot")
 ```
-
-and for S4-type methods by 
 
 ```{r, comment=NA}
 showMethods("plot")
 ```
 
-where we first loaded sp to make sure there are some S4 plot methods to show.
-
 ### 6.1.1 S3-Style Classes and Methods
-
-In Chapter 2, we presented R classes and methods from the perspective of a useR; here we shift perspective to that of a developeR. Building S3-style classes is simple. Suppose we want to build an object of class foo:
 
 ```{r, comment=NA}
 x <- rnorm(10)
@@ -81,26 +61,16 @@ class(x) <- "foo"
 x
 ```
 
-If we plot this object, for example by plot(x), we get the same plot as when we would not have set the class to foo. If we know, however, that objects of class foo need to be plotted without symbols but with connected lines, we can write a plot method for this class:
-
 ```{r, comment=NA}
 plot.foo <- function(x, y, ...) {
   plot.default(x, type = "l", ...)
 }
 ```
 
-after which plot(x) will call this particular method, rather than a default plot method.
-
-Class inheritance is obtained in S3 when an object is given multiple classes, as in
-
 ```{r, comment=NA}
 class(x) <- c("foo", "bar")
 plot(x)
 ```
-
-For this plot, first function plot.foo will be looked for, and if not found the second option plot.bar will be looked for. If none of them is found, the default plot.default will be used.
-
-The S3 class mechanism is simple and powerful. Much of R works with it, including key functions such as lm.
 
 ```{r, comment=NA}
 data(meuse)
@@ -108,11 +78,7 @@ class(meuse)
 class(lm(log(zinc) ~ sqrt(dist), meuse))
 ```
 
-There is, however, no checking that a class with a particular name does indeed contain the elements that a certain method for it expects. It also has design flaws, as method specification by dot separation is ambiguous in case of names such as as.data.frame, where one cannot tell whether it means that the method as.data acts on objects of class frame, or the method as acts on objects of class data.frame, or none of them (the answer is: none). For such reasons, S4-style classes and methods were designed.
-
 ### 6.1.2 S4-Style Classes and Methods
-
-S4-style classes are formally defined using setClass. As an example, somewhat simplified versions of classes CRS and Spatial in sp are
 
 ```{r, comment=NA}
 setClass("CRS", representation(projargs = "character")) 
@@ -134,30 +100,16 @@ setClass("Spatial", representation(bbox = "matrix",
 })
 ```
 
-The command setClass defines a class name as a formal class, gives the names of the class elements (called slots), and their type–type checking will happen upon construction of an instance of the class. Further checking, for example on valid dimensions and data ranges can be done in the validity function. Here, the validity function retrieves the bounding box using the generic bbox method. Generics, if not defined in the base R system, for example
-
 ```{r, comment=NA}
 isGeneric("show")
 ```
-
-can be defined with setGeneric. Defining a specific instance of a generic is done by setMethod:
 
 ```{r, comment=NA}
 setGeneric("bbox", function(obj) standardGeneric("bbox"))
 setMethod("bbox", signature = "Spatial", function(obj) obj@bbox)
 ```
 
-where the signature tells the class of the first (or first n) arguments. Here, the @ operator is used to access the bbox slot in an S4 object, not to be confused with the $ operator to access list elements.
-
-We now illustrate this mechanism by providing a few examples of classes, building on those available in package sp.
-
 ## 6.2 Animal Track Data in Package Trip
-
-CRAN Package trip, written by Michael Sumner (Kirkwood et al., 2006; Page et al., 2006), provides a class for animal tracking data. Animal tracking data consist of sets of (x,y,t) stamps, grouped by an identifier pointing to an individual animal, sensor, or perhaps isolated period of monitoring. A strategy for this (slightly simplified from that of trip) is to extend the SpatialPointsDataFrame class by a length 2 character vector carrying the names of the time column and the trip identifier column in the SpatialPoints DataFrame attribute table.
-
-Package trip does a lot of work to read and analyze tracking data from data formats typical for tracking data (Argos DAT), removing duplicate observations and validating the objects, for example checking that time stamps increase and movement speeds are realistic. We ignore this and stick to the bare bones.
-
-We now define a class called trip that extends SpatialPointsDataFrame:
 
 ```{r, comment=NA}
 setClass("trip", representation("SpatialPointsDataFrame",
@@ -171,11 +123,7 @@ setClass("trip", representation("SpatialPointsDataFrame",
 showClass("trip")
 ```
 
-which checks, upon creation of objects, that indeed two variable names are passed and that these names refer to variables present in the attribute table.
-
 ### 6.2.1 Generic and Constructor Functions
-
-It would be nice to have a constructor function, just like data.frame or SpatialPoints, and so we now create it and set it as the generic function to be called in case the first argument is of class SpatialPointsDataFrame.
 
 ```{r, comment=NA}
 trip.default <- function(obj, TORnames) { 
@@ -188,8 +136,6 @@ trip.default <- function(obj, TORnames) {
 if (!isGeneric("trip")) setGeneric("trip", function(obj, TORnames) standardGeneric("trip"))
 setMethod("trip", signature(obj = "SpatialPointsDataFrame", TORnames = "ANY"), trip.default)
 ```
-
-We can now try it out, with the turtle data of Chapter 2:
 
 ```{r, comment=NA}
 turtle <- read.csv("seamap105_mod.csv")
@@ -206,8 +152,6 @@ summary(turtle_trip)
 
 ### 6.2.2 Methods for Trip Objects
 
-The summary method here is not defined for trip, but is the default summary inherited from class Spatial. As can be seen, nothing special about the trip features is mentioned, such as what the time points are and what the identifiers. We could alter this by writing a class-specific summary method
-
 ```{r, comment=NA}
 summary.trip <- function(object, ...) {
   cat("Object of class \"trip\"\nTime column: ")
@@ -220,10 +164,6 @@ summary.trip <- function(object, ...) {
 setMethod("summary", "trip", summary.trip)
 summary(turtle_trip)
 ```
-
-As trip extends SpatialPointsDataFrame, subsetting using "[" and column selection or replacement using "[[" or "$" all work, as these are inherited. Creating invalid trip objects can be prohibited by adding checks to the validity function in the class definition, for example will not work because the time and/or id column are not present any more.
-
-A custom plot method for trip could be written, for example using color to denote a change in identifier:
 
 ```{r, comment=NA}
 setGeneric("lines", function(x, ...) standardGeneric("lines"))
@@ -240,13 +180,7 @@ setMethod("lines", signature(x = "trip"), function(x, ..., col = NULL) {
 })
 ```
 
-Here, the col argument is added to the function header so that a reasonable default can be overridden, for example for black/white plotting.
-
 ## 6.3 Multi-Point Data: SpatialMultiPoints
-
-One of the feature types of the OpenGeospatial Consortium (OGC) simple feature specification that has not been implemented in sp is the MultiPoint object. In a MultiPoint object, each feature refers to a set of points. The sp classes SpatialPointsDataFrame only provide reference to a single point. Instead of building a new class up from scratch, we try to reuse code and build a class SpatialMultiPoint from the SpatialLines class. After all, lines are just sets of ordered points.
-
-In fact, the SpatialLines class implements the MultiLineString simple feature, where each feature can refer to multiple lines. A special case is formed if each feature only has a single line:
 
 ```{r, comment=NA}
 setClass("SpatialMultiPoints", representation("SpatialLines"),
@@ -258,8 +192,6 @@ setClass("SpatialMultiPoints", representation("SpatialLines"),
 })
 SpatialMultiPoints <- function(object) new("SpatialMultiPoints", object)
 ```
-
-As an example, we can create an instance of this class for two MultiPoint features each having three locations:
 
 ```{r, comment=NA}
 n <- 5
@@ -273,8 +205,6 @@ L3 <- Lines(list(Line(x3)), ID = "mp3")
 s <- SpatialLines(list(L1, L2, L3))
 smp <- SpatialMultiPoints(s)
 ```
-
-If we now plot object smp, we get the same plot as when we plot s, showing the two lines. The plot method for a SpatialLines object is not suitable, so we write a new one:
 
 ```{r, comment=NA}
 plot.SpatialMultiPoints <- function(x, ..., pch = 1:length(x@lines), col = 1, cex = 1) {
@@ -293,10 +223,6 @@ setMethod("plot", signature(x = "SpatialMultiPoints", y = "missing"),
           function(x, y, ...) plot.SpatialMultiPoints(x, ...))
 ```
 
-Here we chose to pass any named ... arguments to the plot method for a Spatial object. This function sets up the axes and controls the margins, aspect ratio, etc. All arguments that need to be passed to points (pch for symbol type, cex for symbol size, and col for symbol color) need explicit naming and sensible defaults, as they are passed explicitly to the consecutive calls to points. According to the documentation of points, in addition to pch, cex, and col, the arguments bg and lwd (symbol fill color and symbol line width) would need a similar treatment to make this plot method completely transparent with the base plot method – something an end user would hope for.
-
-Having pch, cex, and col arrays, the length of the number of MultiPoints sets rather than the number of points to be plotted is useful for two reasons. First, the whole point of MultiPoints object is to distinguish sets of points. Second, when we extend this class to SpatialMultiPointsDataFrame, for example by
-
 ```{r, comment=NA}
 cName <- "SpatialMultiPointsDataFrame"
 setClass(cName, representation("SpatialLinesDataFrame"), 
@@ -311,8 +237,6 @@ SpatialMultiPointsDataFrame <- function(object) {
 }
 ```
 
-then we can pass symbol characteristics by (functions of) columns in the attribute table:
-
 ```{r, comment=NA}
 df <- data.frame(x1 = 1:3, x2 = c(1, 4, 2), row.names = c("mp1", "mp2", "mp3"))
 smp_df <- SpatialMultiPointsDataFrame(SpatialLinesDataFrame(smp, df))
@@ -322,15 +246,9 @@ grys <- c("grey10", "grey40", "grey80")
 plot(smp_df, col = grys[smp_df[["x1"]]], pch = smp_df[["x2"]], cex = 2, axes = TRUE)
 ```
 
-for which the plot is shown in **Figure 6.1**.
-
 **Figure 6.1**. Plot of the SpatialMultiPointsDataFrame object
 
 ## 6.4 Hexagonal Grids
-
-Hexagonal grids are like square grids, where grid points are centers of matching hexagons, rather than squares. Package sp has no classes for hexagonal grids, but does have some useful functions for generating and plotting them. This could be used to build a class. Much of this code in sp is based on postings to the R-sig-geo mailing list by Tim Keitt, used with permission.
-
-The spatial sampling method spsample has a method for sampling points on a hexagonal grid:
 
 ```{r, comment=NA}
 data(meuse.grid)
@@ -338,8 +256,6 @@ gridded(meuse.grid) = ~x + y
 xx <- spsample(meuse.grid, type = "hexagonal", cellsize = 200)
 class(xx)
 ```
-
-gives the points shown in the left side of **Figure 6.2**. Note that an alternative hexagonal representation is obtained by rotating this grid 90◦; we will not further consider that here.
 
 ```{r, comment=NA}
 HexPts <- spsample(meuse.grid, type = "hexagonal", cellsize = 200)
@@ -350,13 +266,7 @@ HexPolsDf <- SpatialPolygonsDataFrame(HexPols, df, match.ID = FALSE)
 spplot(HexPolsDf["dist"])
 ```
 
-for which the plots are shown in **Figure 6.2**.
-
 **Figure 6.2**. Hexagonal points (left) and polygons (right)
-
-We can now generate and plot hexagonal grids, but need to deal with two representations: as points and as polygons, and both representations do not tell by themselves that they represent a hexagonal grid.
-
-For designing a hexagonal grid class we extend SpatialPoints, assuming that computation of the polygons can be done when needed without a prohibitive overhead.
 
 ```{r, comment=NA}
 setClass("SpatialHexGrid", representation("SpatialPoints", dx = "numeric"), 
@@ -373,10 +283,6 @@ setClass("SpatialHexGridDataFrame", representation("SpatialPointsDataFrame", dx 
 })
 ```
 
-Note that these class definitions do not check that instances actually do form valid hexagonal grids; a more robust implementation could provide a test that distances between points with equal y coordinate are separated by a multiple of dx, that the y-separations are correct and so on.
-
-It might make sense to adapt the generic spsample method in package sp to return SpatialHexGrid objects; we can also add plot and spsample methods for them. Method overlay should work with a SpatialHexGrid as its first argument, by inheriting from SpatialPoints. Let us first see how to create the new classes. Without a constructor function we can use
-
 ```{r, comment=NA}
 HexPts <- spsample(meuse.grid, type = "hexagonal", cellsize = 200) 
 Hex <- new("SpatialHexGrid", HexPts, dx = 200)
@@ -385,25 +291,17 @@ spdf <- SpatialPointsDataFrame(HexPts, df)
 HexDf <- new("SpatialHexGridDataFrame", spdf, dx = 200)
 ```
 
-Because of the route taken to define both HexGrid classes, it is not obvious that the second extends the first. We can tell the S4 system this by setIs:
-
 ```{r, comment=NA}
 is(HexDf, "SpatialHexGrid")
 setIs("SpatialHexGridDataFrame", "SpatialHexGrid")
 is(HexDf, "SpatialHexGrid")
 ```
 
-to make sure that methods for SpatialHexGrid objects work as well for objects of class SpatialHexGridDataFrame.
-
-When adding methods, several of them will need conversion to the polygon representation, so it makes sense to add the conversion function such that, for example as(x, "SpatialPolygons") will work:
-
 ```{r, comment=NA}
 setAs("SpatialHexGrid", "SpatialPolygons", function(from) HexPoints2SpatialPolygons(from, from@dx))
 setAs("SpatialHexGridDataFrame", "SpatialPolygonsDataFrame", 
       function(from) SpatialPolygonsDataFrame(as(obj, "SpatialPolygons"), obj@data, match.ID = FALSE))
 ```
-
-We can now add plot, spplot, spsample, and overlay methods for these classes:
 
 ```{r, comment=NA}
 setMethod("plot", signature(x = "SpatialHexGrid", y = "missing"), 
@@ -418,33 +316,21 @@ setMethod("overlay", c("SpatialHexGrid", "SpatialPoints"),
           function(x, y, ...) overlay(as(x, "SpatialPolygons"), y))
 ```
 
-After this, the following will work:
-
 ```{r, comment=NA}
 spplot(meuse.grid["dist"], sp.layout = list("sp.points", + Hex, col = 1))
 spplot(HexDf["dist"])
 ```
 
-Coercion to a data frame is done by
-
 ```{r, comment=NA}
 as(HexDf, "data.frame")
 ```
-
-Another detail not mentioned is that the bounding box of the hexgrid objects only match the grid centre points, not the hexgrid cells:
 
 ```{r, comment=NA}
 bbox(Hex)
 bbox(as(Hex, "SpatialPolygons"))
 ```
 
-One solution for this is to correct for this in a constructor function, and check for it in the validity test. Explicit coercion functions to the points representation would have to set the bounding box back to the points ranges. Another solution is to write a bbox method for the hexgrid classes, taking the risk that someone still looks at the incorrect bbox slot.
-
 ## 6.5 Spatio-Temporal Grids
-
-Spatio-temporal data can be represented in different ways. One simple option is when observations (or model results, or predictions) are given on a regular space–time grid.
-
-Objects of class or extending SpatialPoints, SpatialPixels, and SpatialGrid do not have the constraint that they represent a two-dimensional space; they may have arbitrary dimension; an example for a three-dimensional grid is
 
 ```{r, comment=NA}
 n <- 10
@@ -455,18 +341,12 @@ fullgrid(x) <- TRUE
 summary(x)
 ```
 
-We might assume here that the third dimension, x3, represents time. If we are happy with time somehow represented by a real number (in double precision), then we are done. A simple representation is that of decimal year, with, for example 1980.5 meaning the 183rd day of 1980, or, for example relative time in seconds after the start of some event.
-
-When we want to use the POSIXct or POSIXlt representations, we need to do some more work to see the readable version. We now devise a simple three-dimensional space–time grid with the POSIXct representation.
-
 ```{r, comment=NA}
 setClass("SpatialTimeGrid", "SpatialGrid", validity <- function(object) {
   stopifnot(dimensions(object) == 3)
   TRUE
 })
 ```
-
-Along the same line, we can extend the SpatialGridDataFrame for space-time:
 
 ```{r, comment=NA}
 setClass("SpatialTimeGridDataFrame", "SpatialGridDataFrame", validity <- function(object) {
@@ -476,8 +356,6 @@ setClass("SpatialTimeGridDataFrame", "SpatialGridDataFrame", validity <- functio
 setIs("SpatialTimeGridDataFrame", "SpatialTimeGrid") 
 x <- new("SpatialTimeGridDataFrame", x)
 ```
-
-A crude summary for this class could be written along these lines:
 
 ```{r, comment=NA}
 summary.SpatialTimeGridDataFrame <- function(object, ...) {
@@ -494,8 +372,6 @@ summary.SpatialTimeGridDataFrame <- function(object, ...) {
 setMethod("summary", "SpatialTimeGridDataFrame", summary.SpatialTimeGridDataFrame)
 summary(x)
 ```
-
-Next, suppose we need a subsetting method that selects on the time. When the first subset argument is allowed to be a time range, this is done by
 
 ```{r, comment=NA}
 subs.SpatialTimeGridDataFrame <- function(x, i, j, ..., drop = FALSE) {
@@ -526,10 +402,6 @@ summary(x[c(t1, t2)])
 summary(x[t1])
 ```
 
-The reason to only convert back to SpatialTimeGridDataFrame when multiple time steps are present is that the time step (‘cell size’ in time direction) cannot be found when there is only a single step. In that case, the current selection method returns an object of class SpatialPixelsDataFrame for that time slice.
-
-Plotting a set of slices could be done using levelplot or writing another spplot method:
-
 ```{r, comment=NA}
 spplot.stgdf <- function(obj, zcol = 1, ..., format = NULL) {
   if (length(zcol) != 1)
@@ -547,29 +419,19 @@ spplot.stgdf <- function(obj, zcol = 1, ..., format = NULL) {
 setMethod("spplot", "SpatialTimeGridDataFrame", spplot.stgdf)
 ```
 
-Now, the result of
-
 ```{r, comment=NA}
 trellis.par.set(canonical.theme(color = FALSE))
 spplot(x, format = "%H:%M:%S", as.table = TRUE, cuts = 6, 
        col.regions = grey.colors(7, 0.55, 0.95, 2.2))
 ```
 
-is shown in **Figure 6.3**. The format argument passed controls the way time is printed; one can refer to the help of
-
 ```{r, comment=NA}
 `?`(as.character.POSIXt)
 ```
 
-for more details about the format argument.
-
 ## 6.6 Analyzing Spatial Monte Carlo Simulations
 
-Quite often, spatial statistical analysis results in a large number of spatial realizations of a random field, using some Monte Carlo simulation approach. Regardless whether individual values refer to points, lines, polygons, or grid cells, we would like to write some methods or functions that aggregate over these simulations, to get summary statistics such as the mean value, quantiles, or cumulative distributions values. Such aggregation can take place in two ways. Either we aggregate over the probability space and compute summary statistics for each geographical feature over the set of realizations (i.e. the rows of the attribute table), or for each realization we aggregate over the complete geographical layer or a subset of it (i.e. aggregate over the columns of the attribute table).
-
 **Figure 6.3**. spplot for an object of class SpatialTimeGridDataFrame, filled with random numbers
-
-Let us first generate, as an example, a set of 100 conditional Gaussian simulations for the zinc variable in the meuse data set:
 
 ```{r, comment=NA}
 data(meuse)
@@ -579,8 +441,6 @@ sim <- krige(log(zinc) ~ 1, meuse, meuse.grid, v, nsim = 100, nmax = 30)
 sim@data <- exp(sim@data)
 ```
 
-where the last statement back-transforms the simulations from the log scale to the observation scale. A quantile method for Spatial object attributes can be written as
-
 ```{r, comment=NA}
 quantile.Spatial <- function(x, ..., byLayer = FALSE) {
   stopifnot("data" %in% slotNames(x))
@@ -588,23 +448,15 @@ quantile.Spatial <- function(x, ..., byLayer = FALSE) {
 }
 ```
 
-after which we can find the sample below and above 95% confidence limits by
-
 ```{r, comment=NA}
 sim$lower <- quantile.Spatial(sim[1:100], probs = 0.025) 
 sim$upper <- quantile.Spatial(sim[1:100], probs = 0.975)
 ```
 
-To get the sample distribution of the areal median, we can aggregate over layers:
-
 ```{r, comment=NA}
 medians <- quantile.Spatial(sim[1:100], probs = 0.5, byLayer = TRUE)
 hist(medians)
 ```
-
-It should be noted that in these particular cases, the quantities computed by simulations could have been obtained faster and exactly by working analytically with ordinary (block) kriging and the normal distribution (Section 8.7.2).
-
-A statistic that cannot be obtained analytically is the sample distribution of the area fraction that exceeds a threshold. Suppose that 500 is a crucial threshold, and we want to summarize the sampling distribution of the area fraction where 500 is exceeded:
 
 ```{r, comment=NA}
 fractionBelow <- function(x, q, byLayer = FALSE) { 
@@ -616,21 +468,13 @@ summary(over500)
 quantile(over500, c(0.025, 0.975))
 ```
 
-For space–time data, we could write methods that aggregate over space, over time, or over space and time.
-
 ## 6.7 Processing Massive Grids
-
-Up to now we have made the assumption that gridded data can be completely read and are kept by R in memory. In some cases, however, we need to process grids that exceed the memory capacity of the computers available. A method for analyzing grids without fully loading them into memory then seems useful. Note that package rgdal allows for partial reading of grids, for example
 
 ```{r, comment=NA}
 x <- readGDAL("70042108.tif", output.dim = c(120, 132)) 
 x$band1[x$band1 <= 0] <- NA
 spplot(x, col.regions = bpy.colors())
 ```
-
-reads a downsized grid, where 1% of the grid cells remained. Another option is reading certain rectangular sections of a grid, starting at some offset.
-
-Yet another approach is to use the low-level opening routines and then subset:
 
 ```{r, comment=NA}
 x <- GDAL.open("70042108.tif")
@@ -640,18 +484,12 @@ class(x.subs)
 gridparameters(x.subs)
 ```
 
-An object of class GDALReadOnlyDataset contains only a file handle. The subset method "[" for it does not, as it quite often does, return an object of the same class but actually reads the data requested, with arguments interpreted as rows, columns, and raster bands, and returns a SpatialGridDataFrame. We now extend this approach to allow partial writing through "[" as well . As the actual code is rather lengthy and involves a lot of administration, it will not all be shown and details can be found in the rgdal source code.
-
-We define two classes,
-
 ```{r, comment=NA}
 setClass("SpatialGDAL", 
          representation("Spatial", grid = "GridTopology", 
                         grod = "GDALReadOnlyDataset", name = "character"))
 setClass("SpatialGDALWrite", "SpatialGDAL")
 ```
-
-that derive from Spatial, contain a GridTopology, and a file handle in the grod slot. Next, we can define a function open.SpatialGDAL to open a raster file, returning a SpatialGDAL object and a function copy.SpatialGDAL that returns a writable copy of the opened raster. Note that some GDAL drivers allow only copying, some only writing, and some both.
 
 ```{r, comment=NA}
 x <- open.SpatialGDAL("70042108.tif")
@@ -672,19 +510,9 @@ close(x)
 close(xout)
 ```
 
-This requires the functions "[" and "[<-" to be present. They are set by
-
 ```{r, comment=NA}
 setMethod("[", "SpatialGDAL", function(x, i, j, ..., drop = FALSE) x@grod[i = i, j = j, ...])
 setReplaceMethod("[", "SpatialGDALWrite", function(x, i, j, ..., value) {
   ...
 })
 ```
-
-where, for the latter, the implementation details are omitted here. It should be noted that single rows or columns cannot be read this way, as they cannot be converted sensibly to a grid.
-
-It should be noted that flat binary representations such as the Arc/Info Binary Grid allow much faster random access than ASCII representations or compressed formats such as jpeg varieties. Also, certain drivers in the GDAL library suggest an optimal block size for partial access (e.g. typically a single row), which is not used here [1].
-
-This chapter has sketched developments beyond the base sp classes and methods used otherwise in this book. Although we think that the base classes cater for many standard kinds of spatial data analysis, it is clear that specific research problems will call for specific solutions, and that the R environment provides the high-level abstractions needed to help busy researchers get their work done.
-
-[1] An attempt to use this block size is, at time of writing, found in the blockApply code, found in the THK CVS branch of the rgdal project on SourceForge.
