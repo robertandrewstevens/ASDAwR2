@@ -1,5 +1,5 @@
 ---
-title: "sawr02"
+title: "ASDAwR2-02"
 author: "Robert A. Stevens"
 date: "May 26, 2015"
 output: html_document
@@ -15,49 +15,27 @@ library(rgeos)
 library(raster)
 ```
 
-*Applied Spatial Data Analysis with R* by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
+*Applied Spatial Data Analysis with R* (2nd Ed.)
+
+by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
 
 # 2 Classes for Spatial Data in R
 
 ## 2.1 Introduction
 
-Many disciplines have influenced the representation of spatial data, both in analogue and digital forms. Surveyors, navigators, and military and civil engineers refined the fundamental concepts of mathematical geography, established often centuries ago by some of the founders of science, for example by al-Khwarizmi. Digital representations came into being for practical reasons in computational geometry, in computer graphics and hardware-supported gaming, and in computer-assisted design and virtual reality. The use of spatial data as a business vehicle has been spurred in the early years of the present century by consumer broadband penetration and distributed server farms, with a prime example being Google Earth [1]. There are often interactions between the graphics hardware required and the services offered, in particular for the fast rendering of scene views.
-
-In addition, space and other airborne technologies have vastly increased the volumes and kinds of spatial data available. Remote sensing satellites continue to make great contributions to earth observation, with multi-spectral images supplementing visible wavelengths. The Shuttle Radar Topography Mission (SRTM) in February 2000 has provided elevation data for much of the earth. Other satellite-borne sensor technologies are now vital for timely storm warnings, amongst other things. These complement terrestrial networks monitoring, for example lightning strikes and the movement of precipitation systems by radar.
-
-Surveying in the field has largely been replaced by aerial photogrammetry, mapping using air photographs usually exposed in pairs of stereo images. Legacy aerial photogrammetry worked with analogue images, and many research laboratories and mapping agencies have large archives of air photographs with coverage beginning from the 1930s. These images can be scanned to provide a digital representation at chosen resolutions. While satellite imagery usually contains metadata giving the scene frame – the sensor direction in relation to the earth at scan time – air photographs need to be registered to known ground control points.
-
-These ground control points were ‘known’ from terrestrial triangulation, but could be in error. The introduction of Global Positioning System (GPS) satellites has made it possible to correct the positions of existing networks of ground control points. The availability of GPS receivers has also made it possible for data capture in the field to include accurate positional information in a known coordinate reference system. This is conditioned by the requirement of direct line-of-sight to a sufficient number of satellites, not easy in mountain valleys or in city streets bounded by high buildings. Despite this limitation, around the world the introduction of earth observation satellites and revised ground control points have together caused breaks of series in published maps, to take advantage of the greater accuracy now available. This means that many older maps cannot be matched to freshly acquired position data without adjustment.
-
-All of these sources of spatial data involve points, usually two real numbers representing position in a known coordinate reference system. It is possible to go beyond this simple basis by combining pairs of points to form line segments, combining line segments to form polylines, networks or polygons, or regular grid centers. Grids can be defined within a regular polygon, usually a rectangle, with given resolution – the size of the grid cells. All these definitions imply choices of what are known in geographical information systems (GIS) as data models, and these choices have most often been made for pragmatic reasons. All the choices also involve trade-offs between accuracy, feasibility, and cost.
-
-Artificial objects are easiest to represent, like roads, bridges, buildings, or similar structures. They are crisply defined, and are not subject to natural change – unlike placing political borders along the centre lines or deepest channels of meandering rivers. Shorelines are most often natural and cannot be measured accurately without specifying measurement scale. Boundaries between areas of differing natural land cover are frequently indeterminate, with gradations from one land cover category to another. Say that we want to examine the spatial distribution of a species by land cover category; our data model of how to define the boundary between categories will affect the outcome, possibly strongly. Something of the same affects remote sensing, because the reported values of the observed pixels will hide sub-pixel variation.
-
-It is unusual for spatial data to be defined in three dimensions, because of the close links between cartography and data models for spatial data. When there are multiple observations on the same attribute at varying heights or depths, they are most often treated as separate layers. GIS-based data models do not fit time series data well either, even though some environmental monitoring data series are observed in three dimensions and time. Some GIS software can handle voxels, the 3D equivalent of pixels – 2D raster cells – but the third dimension in spatial data is not handled satisfactorily, as is the case in computer-assisted design or medical imaging. On the other hand, many GIS packages do provide a 2.5D intermediate solution for viewing, by draping thematic layers, like land cover or a road network, over a digital elevation model. In this case, however, there is no ‘depth’ in the data model, as we can see when a road tunnel route is draped over the mountain it goes through.
-
 ## 2.2 Classes and Methods in R
-
-In Chapter 1, we described R as a language and environment for data analysis. Although this is not the place to give an extended introduction to R [2], it will be useful to highlight some of its features (see also Braun and Murdoch, 2007, for an up-to-date introduction). In this book, we will be quoting R commands in the text, showing which commands a user could give, and how the non-graphical output might be represented when printed to the console.
-
-Of course, R can be used as a calculator to carry out simple tasks, where no values are assigned to variables, and where the results are shown without being saved, such as the area of a circle of radius 10:
 
 ```{r, comment=NA}
 pi*10^2
 ```
 
-Luckily, π is a built-in constant in R called pi, and so entering a rounded version is not needed. So this looks like a calculator, but appearances mislead. The first misleading impression is that the arithmetic is simply being ‘done’, while in fact it is being translated (parsed) into functions (operators) with arguments first, and then evaluated:
-
 ```{r, comment=NA}
 "*"(pi, "^"(10, 2))
 ```
 
-When the operators or functions permit, vectors of values may be used as readily as scalar values (which are vectors of unit length) — here the ‘:’ operator is used to generate an integer sequence of values:
-
 ```{r, comment=NA}
 pi*(1:10)^2
 ```
-
-The second misapprehension is that what is printed to the console is the ‘result’, when it is actually the outcome of applying the appropriate print method for the class of the ‘result’, with default arguments. If we store the value returned for the area of our circle in variable x using the assignment operator <-, we can print x with the default number of digits, or with more if we so please. Just typing the variable name at the interactive prompt invokes the appropriate print method, but we can also pass it to the print method explicitly:
 
 ```{r, comment=NA}
 x <- pi*10^2 
@@ -66,16 +44,10 @@ print(x)
 print(x, digits = 12)
 ```
 
-We can say that the variable x contains an object of a particular class, in this case:
-
 ```{r, comment=NA}
 class(x)
 typeof(x)
 ```
-
-where typeof returns the storage mode of the object in variable x. It is the class of the object that determines the method that will be used to handle it; if there is no specific method for that class, it may be passed to a default method. These methods are also known as generic functions, often including at least print, plot, and summary methods. In the case of the print method, numeric is not provided for explicitly, and so the default method is used. The plot method, as its name suggests, will use the current graphics device to make a visual display of the object, dispatching to a specific method for the object class if provided. In comparison with the print method, the summary method provides a qualified view of the data, highlighting the key features of the object.
-
-When the S language was first introduced, it did not use class/method mechanisms at all. They were introduced in Chambers and Hastie (1992) and S version 3, in a form that is known as S3 classes or old-style classes. These classes were not formally defined, and ‘just grew’; the vast majority of objects returned by model fitting functions belong to old-style classes. Using a non-spatial example from the standard data set cars, we can see that it is an object of class data.frame, stored in a list, which is a vector whose components can be arbitrary objects; data.frame has both names and summary methods:
 
 ```{r, comment=NA}
 class(cars)
@@ -84,27 +56,17 @@ names(cars)
 summary(cars)
 ```
 
-The data.frame contains two variables, one recording the speed of the observed cars in mph, the other the stopping distance measured in feet – the observations were made in the 1920s. When uncertain about the structure of something in our R workspace, revealed for example by using the ls function for listing the contents of the workspace, the str [3] method often gives a clear digest, including the size and class:
-
 ```{r, comment=NA}
 str(cars)
 ```
-
-Data frames are containers for data used everywhere in S since their full introduction in Chambers and Hastie (1992, pages 45–94). Recent and shorter introductions to data frames are given by Crawley (2005, pages 15–22), Crawley (2007, pages 107–133), and Dalgaard (2002, pages 18–19) and in the online documentation (Venables et al., 2008, pages 27–29 in the R 2.6.2 release). Data frames view the data as a rectangle of rows of observations on columns of values of variables of interest. The representation of the values of the variables of interest can include integer and floating point numeric types, logical, character, and derived classes. One very useful derived class is the factor, which is represented as integers pointing to character levels, such as ‘forest’ or ‘arable’. Printed, the values look like character values, but are not – when a data frame is created, all character variables included in it are converted to factor by default. Data frames also have unique row names, represented as an integer or character vector or as an internal mechanism to signal that the sequence from 1 to the number of rows in the data frame are used. The row.names function is used to access and assign data frame row names.
-
-One of the fundamental abstractions used in R is the formula introduced in Chambers and Hastie (1992, pages 13–44) – an online summary may be found in Venables et al. (2008, pages 50–52 in the R 2.6.2 release). The abstraction is intended to make statistical modeling as natural and expressive as possible, permitting the analyst to focus on the substantive problem at hand. Because the formula abstraction is used in very many contexts, it is worth some attention. A formula is most often two-sided, with a response variable to the left of the ∼ (tilde) operator, and in this case a determining variable on the right:
 
 ```{r, comment=NA}
 class(dist ~ speed)
 ```
 
-These objects are typically used as the first argument to model fitting functions, such as lm, which is used to fit linear models. They will usually be accompanied by a data argument, indicating where the variables are to be found:
-
 ```{r, comment=NA}
 lm(dist ~ speed, data = cars)
 ```
-
-This is a simple example, but very much more can be done with the formula abstraction. If we create a factor for the speed variable by cutting it at its quartiles, we can contrast how the plot method displays the relationship between two numerical variables and a numerical variable and a factor (shown in **Figure 2.1**):
 
 ```{r, comment=NA}
 cars$qspeed <- cut(cars$speed, breaks = quantile(cars$speed), include.lowest = TRUE)
@@ -116,33 +78,19 @@ plot(dist ~ qspeed, data = cars, main = "factor: boxplots")
 
 **Figure 2.1**. Plot methods for a formula with numerical (left panel) and factor (right panel) right-hand side variables
 
-Finally, let us see how the formula with the right-hand side factor is handled by lm – it is converted into ‘dummy’ variable form automatically:
-
 ```{r, comment=NA}
 lm(dist ~ qspeed, data = cars)
 ```
 
-Variables in the formula may also be transformed in different ways, for example using log. The formula is carried through into the object returned by model fitting functions to be used for prediction from new data provided in a data.frame with the same column names as the right-hand side variables, and the same level names if the variable is a factor.
-
-New-style (S4) classes were introduced in the S language at release 4, and in Chambers (1998), and are described by Venables and Ripley (2000, pages 75–121), and in subsequent documentation installed with R [4]. Old-style classes are most often simply lists with attributes; they are not defined formally. Although users usually do not change values inside old-style classes, there is nothing to stop them doing so, for example changing the representation of coordinates from floating point to integer numbers. This means that functions need to check, among other things, whether components of a class exist, and whether they are represented correctly, before they can be handled. The central advantage of new-style classes is that they have formal definitions that specify the name and type of the components, called slots, that they contain. This simplifies the writing, maintenance, and use of the classes, because their format is known from the definition. For a further discussion of programming for classes and methods, see Section 6.1.
-
-Because the classes provided by the sp package are new-style classes, we will be seeing how such classes work in practice below. In particular, we will be referring to the slots in class definitions; slots are specified in the definition as the representation of what the class contains. Many methods are written for the classes to be introduced in the remainder of this chapter, in particular coercion methods for changing the way an object is represented from one class to another. New-style classes can also check the validity of objects being created, for example to stop the user from filling slots with data that do not conform to the definition.
-
 ## 2.3 Spatial Objects
-
-The foundation class is the Spatial class, with just two slots. The first is a bounding box, a matrix of numerical coordinates with column names c(‘min’, ‘max’), and at least two rows, with the first row eastings (x-axis) and the second northings (y-axis). Most often the bounding box is generated automatically from the data in subclasses of Spatial. The second is a CRS class object defining the coordinate reference system, and may be set to ‘missing’, represented by NA in R, by CRS(as.character(NA)), its default value. Operations on Spatial\* objects should update or copy these values to the new Spatial\* objects being created. We can use getClass to return the complete definition of a class, including its slot names and the types of their contents:
 
 ```{r, comment=NA}
 getClass("Spatial")
 ```
 
-As we see, getClass also returns known subclasses, showing the classes that include the Spatial class in their definitions. This also shows where we are going in this chapter, moving from the foundation class to richer representations. But we should introduce the coordinate reference system (CRS) class very briefly; we will return to its description in Chapter 4.
-
 ```{r, comment=NA}
 getClass("CRS")
 ```
-
-The class has a character string as its only slot value, which may be a missing value. If it is not missing, it should be a PROJ.4-format string describing the projection (more details are given in Section 4.1.2). For geographical coordinates, the simplest such string is "+proj=longlat", using "longlat", which also shows that eastings always go before northings in sp classes. Let us build a simple Spatial object from a bounding box matrix, and a missing coordinate reference system:
 
 ```{r, comment=NA}
 m <- matrix(c(0, 0, 1, 1), ncol = 2, dimnames = list(NULL, c("min", "max")))
@@ -151,8 +99,6 @@ crs
 S <- Spatial(bbox = m, proj4string = crs)
 S
 ```
-
-We could have used new methods to create the objects, but prefer to use helper functions with the same names as the classes that they instantiate. If the object is known not to be projected, a sanity check is carried out on the coordinate range (which here exceeds the feasible range for geographical coordinates):
 
 ```{r, comment=NA}
 # Spatial(matrix(c(350, 85, 370, 95), ncol = 2, 
@@ -164,12 +110,6 @@ Spatial(bb, proj4string = CRS("+proj=longlat"))
 
 ## 2.4 SpatialPoints
 
-The SpatialPoints class is the first subclass of Spatial, and a very important one. The extension of SpatialPoints to other subclasses means that explaining how this class works will yield benefits later on. In this section, we also look at methods for Spatial\* objects, and at extending Spatial\* objects to include attribute data, where each spatial entity, here a point, is linked to a row in a data frame. We take Spatial* objects to be subclasses of Spatial, and the best place to start is with SpatialPoints.
-
-A two-dimensional point can be described by a pair of numbers (x, y), defined over a known region. To represent geographical phenomena, the maximum known region is the earth, and the pair of numbers measured in degrees are a geographical coordinate, showing where our point is on the globe. The pair of numbers define the location on the sphere exactly, but if we represent the globe more accurately by an ellipsoid model, such as the World Geodetic System 1984 – introduced after satellite measurements corrected our understanding of the shape of the earth – that position shifts slightly. Geographical coordinates can extend from latitude 90◦ to −90◦ in the north–south direction, and from longitude 0◦ to 360◦ or equivalently from −180◦ to 180◦ in the east–west direction. The Poles are fixed, but where the longitudes fall depends on the choice of prime meridian, most often Greenwich just east of London. This means that geographical coordinates define a point on the earth’s surface unequivocally if we also know which ellipsoid model and prime meridian were used; the concept of datum, relating the ellipsoid to the distance from the centre of the earth, is introduced on page 82.
-
-Using the standard read.table function, we read in a data file with the positions of CRAN mirrors across the world. We extract the two columns with the longitude and latitude values into a matrix, and use str to view a digest:
-
 ```{r, comment=NA}
 setwd("~/GitHub/GIS")
 CRAN_df <- read.table("CRAN051001a.txt", header = TRUE)
@@ -178,13 +118,9 @@ row.names(CRAN_mat) <- 1:nrow(CRAN_mat)
 str(CRAN_mat)
 ```
 
-The SpatialPoints class extends the Spatial class by adding a coords slot, into which a matrix of point coordinates can be inserted.
-
 ```{r, comment=NA}
 getClass("SpatialPoints")
 ```
-
-It has a summary method that shows the bounding box, whether the object is projected (here FALSE, because the string "longlat" is included in the projection description), and the number of rows of coordinates. Classes in sp are not atomic: there is no SpatialPoint class that is extended by SpatialPoints. This is because R objects are vectorized by nature, not atomic. A SpatialPoints object may, however, consist of a single point.
 
 ```{r, comment=NA}
 llCRS <- CRS("+proj=longlat +ellps=WGS84")
@@ -192,17 +128,11 @@ CRAN_sp <- SpatialPoints(CRAN_mat, proj4string = llCRS)
 summary(CRAN_sp)
 ```
 
-SpatialPoints objects may have more than two dimensions, but plot methods for the class use only the first two.
-
 ### 2.4.1 Methods
-
-Methods are available to access the values of the slots of Spatial objects. The bbox method returns the bounding box of the object, and is used both for preparing plotting methods (see Chapter 3) and internally in handling data objects. The first row reports the west–east range and the second the south–north direction. If we want to take a subset of the points in a SpatialPoints object, the bounding box is reset, as we will see.
 
 ```{r, comment=NA}
 bbox(CRAN_sp)
 ```
-
-First, the other generic method for all Spatial objects, proj4string, will be introduced. The basic method reports the projection string contained as a CRS object in the proj4string slot of the object, but it also has an assignment form, allowing the user to alter the current value, which can also be a CRS object containing a character NA value:
 
 ```{r, comment=NA}
 proj4string(CRAN_sp)
@@ -211,40 +141,26 @@ proj4string(CRAN_sp)
 proj4string(CRAN_sp) <- llCRS
 ```
 
-Extracting the coordinates from a SpatialPoints object as a numeric matrix is as simple as using the coordinates method. Like all matrices, the indices can be used to choose subsets, for example CRAN mirrors located in Brazil in 2005:
-
 ```{r, comment=NA}
 brazil <- which(CRAN_df$loc == "Brazil")
 brazil
 coordinates(CRAN_sp)[brazil, ]
 ```
 
-In addition, a SpatialPoints object can also be accessed by index, using the "[" operator, here on the coordinate values treated as an entity. The object returned is of the same class, and retains the projection information, but has a new bounding box:
-
 ```{r, comment=NA}
 summary(CRAN_sp[brazil, ])
 ```
-
-The "[" operator also works for negative indices, which remove those coordinates from the object, here by removing mirrors south of the Equator:
 
 ```{r, comment=NA}
 south_of_equator <- which(coordinates(CRAN_sp)[, 2] < 0)
 summary(CRAN_sp[-south_of_equator, ])
 ```
 
-Because summary and print methods are so common in R, we used them here without special mention. They are provided for sp classes, with summary reporting the number of spatial entities, the projection information, and the bounding box, and print gives a view of the data in the object. As usual in S, the actual underlying data and the output of the print method may differ, for example in the number of digits shown.
-
-An important group of methods for visualization of Spatial\* objects are presented in detail in Chapter 3; each such object class has a plot method. Other methods will also be introduced in Chapter 5 for combining (overlaying) different Spatial\* objects, for sampling from Spatial objects, and for merging spatial data objects.
-
 ### 2.4.2 Data Frames for Spatial Point Data
-
-We described data frames on page 25, and we now show how our SpatialPoints object can be taught to behave like a data.frame. Here we use numbers in sequence to index the points and the rows of our data frame, because neither the place names nor the countries are unique.
 
 ```{r, comment=NA}
 str(row.names(CRAN_df))
 ```
-
-What we would like to do is to associate the correct rows of our data frame object with ‘their’ point coordinates – it often happens that data are collected from different sources, and the two need to be merged. The SpatialPointsDataFrame class is the container for this kind of spatial point information, and can be constructed in a number of ways, for example from a data frame and a matrix of coordinates. If the matrix of point coordinates has row names and the match.ID argument is set to its default value of TRUE, then the matrix row names are checked against the row names of the data frame. If they match, but are not in the same order, the data frame rows are reordered to suit the points. If they do not match, no SpatialPointsDataFrame is constructed. Note that the new object takes two indices, the first for the spatial object, the second, if given, for the column. Giving a single index number, or range of numbers, or column name or names returns a new SpatialPointsDataFrame with the requested columns. Using other extraction operators, especially the $ operator, returns the data frame column referred to. These operators mimic the equivalent ones for other standard S classes as far as possible.
 
 ```{r, comment=NA}
 CRAN_spdf1 <- SpatialPointsDataFrame(CRAN_mat, CRAN_df, 
@@ -253,8 +169,6 @@ CRAN_spdf1[4, ]
 str(CRAN_spdf1$loc)
 str(CRAN_spdf1[["loc"]])
 ```
-
-If we reorder the data frame at random using sample, we still get the same result, because the data frame is reordered to match the row names of the points:
 
 ```{r, comment=NA}
 s <- sample(nrow(CRAN_df))
@@ -265,16 +179,12 @@ all.equal(CRAN_spdf2, CRAN_spdf1)
 CRAN_spdf2[4, ]
 ```
 
-But if we have non-matching ID values, created by pasting pairs of letters together and sampling an appropriate number of them, the result is an error:
-
 ```{r, comment=NA, error=TRUE}
 CRAN_df1 <- CRAN_df
 row.names(CRAN_df1) <- sample(c(outer(letters, letters, paste, sep = "")),
                               nrow(CRAN_df1))
 try(CRAN_spdf3 <- SpatialPointsDataFrame(CRAN_mat, CRAN_df1, proj4string = llCRS, match.ID = TRUE))
 ```
-
-Let us examine the contents of objects of the SpatialPointsDataFrame class, shown in **Figure 2.2**. Because the class extends SpatialPoints, it also inherits the information contained in the Spatial class object. The data slot is where the information from the data frame is kept, in a data.frame object.
 
 - **SpatialPointsDataFrame**
     + **SpatialPoints**
@@ -297,21 +207,15 @@ Let us examine the contents of objects of the SpatialPointsDataFrame class, show
 getClass("SpatialPointsDataFrame")
 ```
 
-The Spatial*DataFrame classes have been designed to behave as far as possible like data frames, both with respect to standard methods such as names, and more demanding modeling functions like model.frame used in very many model fitting functions using formula and data arguments:
-
 ```{r, comment=NA}
 names(CRAN_spdf1)
 str(model.frame(lat ~ long, data = CRAN_spdf1), give.attr = FALSE)
 ```
 
-Making our SpatialPointsDataFrame object from a matrix of coordinates and a data frame with or without ID checking is only one way to reach our goal, and others may be more convenient. We can construct the object by giving the SpatialPointsDataFrame function a SpatialPoints object as its first argument:
-
 ```{r, comment=NA}
 CRAN_spdf4 <- SpatialPointsDataFrame(CRAN_sp, CRAN_df)
 all.equal(CRAN_spdf4, CRAN_spdf2)
 ```
-
-We can also assign coordinates to a data frame – this approach modifies the original data frame. The coordinate assignment function can take a matrix of coordinates with the same number of rows as the data frame on the right-hand side, or an integer vector of column numbers for the coordinates, or equivalently a character vector of column names, assuming that the required columns already belong to the data frame.
 
 ```{r, comment=NA}
 CRAN_df0 <- CRAN_df
@@ -321,8 +225,6 @@ all.equal(CRAN_df0, CRAN_spdf2)
 str(CRAN_df0, max.level = 2)
 ```
 
-Objects created in this way differ slightly from those we have seen before, because the coords.nrs slot is now used, and the coordinates are moved from the data slot to the coords slot, but the objects are otherwise the same:
-
 ```{r, comment=NA}
 CRAN_df1 <- CRAN_df
 names(CRAN_df1)
@@ -331,17 +233,11 @@ proj4string(CRAN_df1) <- llCRS
 str(CRAN_df1, max.level = 2)
 ```
 
-Transect and tracking data may also be represented as points, because the observation at each point contributes information that is associated with the point itself, rather than the line as a whole. Sequence numbers can be entered into the data frame to make it possible to trace the points in order, for example as part of a SpatialLines object as we see in the Section 2.5.
-
-As an example, we use a data set [5] from satellite telemetry of a single loggerhead turtle crossing the Pacific from Mexico to Japan (Nichols et al., 2000).
-
 ```{r, comment=NA}
 setwd("~/GitHub/GIS")
 turtle_df <- read.csv("seamap105_mod.csv")
 summary(turtle_df)
 ```
-
-Before creating a SpatialPointsDataFrame, we will timestamp the observations, and reorder the input data frame by timestamp to make it easier to add months to **Figure 2.3**, to show progress westwards across the Pacific:
 
 ```{r, comment=NA}
 timestamp <- as.POSIXlt(strptime(as.character(turtle_df$obs_date), 
@@ -352,8 +248,6 @@ turtle_sp <- turtle_df1[order(turtle_df1$timestamp), ]
 coordinates(turtle_sp) <- c("lon", "lat")
 proj4string(turtle_sp) <- CRS("+proj=longlat +ellps=WGS84")
 ```
-
-The input data file is as downloaded, but without columns with identical values for all points, such as the number of the turtle (07667). We return to this data set in Chapter 6, examining the interesting contributed package trip by Michael Sumner, which proposes customized classes and methods for data of this kind.
 
 ```{r, comment=NA}
 gshhs.c.b <- system.file("share/gshhs_c.b", package = "maptools")
@@ -371,22 +265,14 @@ text(crds[clen, ], labels = m_rle$values[-1], pos = 3, offset = 1.5, srt = 45)
 
 ## 2.5 SpatialLines
 
-Lines have been represented in S in a simple form as a sequence of points (see Becker et al. (1988), Murrell (2006, pages 83–86)), based on lowering the graphic ‘pen’ at the first point and drawing to the successive points until an NA is met. Then the pen is raised and moved to the next non-NA value, where it is lowered, until the end of the set of points. While this is convenient for graphics output, it is less so for associating lines with data values, because the line is not subsetted into data objects in any other way than by NA values.
-
-The approach adopted here is to start with a Line object that is a matrix of 2D coordinates, without NA values. A list of Line objects forms the Lines slot of a Lines object. An identifying character tag is also required, and will be used for constructing SpatialLines objects using the same approach as was used above for matching ID values for spatial points.
-
 ```{r, comment=NA}
 getClass("Line")
 getClass("Lines")
 ```
 
-Neither Line nor Lines objects inherit from the Spatial class. It is the SpatialLines object that contains the bounding box and projection information for the list of Lines objects stored in its lines slot. This degree of complexity is required to be able to add observation values in a data frame, creating SpatialLinesDataFrame objects, and to use a range of extraction methods on these objects.
-
 ```{r, comment=NA}
 getClass("SpatialLines")
 ```
-
-Let us examine an example of an object of this class, created from lines retrieved from the maps package world database, and converted to a SpatialLines object using the map2SpatialLines function in maptools. We can see that the lines slot of the object is a list of 51 components, each of which must be a Lines object in a valid SpatialLines object.
 
 ```{r, comment=NA}
 japan <- map("world", "japan", plot = FALSE)
@@ -394,8 +280,6 @@ p4s <- CRS("+proj=longlat +ellps=WGS84")
 SLjapan <- map2SpatialLines(japan, proj4string = p4s) 
 str(SLjapan, max.level = 2)
 ```
-
-SpatialLines and SpatialPolygons objects are very similar, as can be seen in **Figure 2.4** – the lists of component entities stack up in a hierarchical fashion. A very typical way of exploring the contents of these objects is to use lapply or sapply in combination with slot. The lapply and sapply functions apply their second argument, which is a function, to each of the elements of their first argument. The command used here can be read as follows: return the length of the Lines slot – how many Line objects it contains – of each Lines object in the list in the lines slot of SLjapan, simplifying the result to a numeric vector. If lapply was used, the result would have been a list. As we see, no Lines object contains more than one Line object:
 
 - **SpatialLines**
     + *lines*
@@ -438,24 +322,16 @@ Lines_len <- sapply(slot(SLjapan, "lines"), function(x) length(slot(x, "Lines"))
 table(Lines_len)
 ```
 
-We can use the ContourLines2SLDF function included in maptools in our next example, converting data returned by the base graphics function contourLines into a SpatialLinesDataFrame object; we used the volcano data set in Chapter 1, **Figure 1.3**:
-
 ```{r, comment=NA}
 volcano_sl <- ContourLines2SLDF(contourLines(volcano))
 t(slot(volcano_sl, "data"))
 ```
-
-We can see that there are ten separate contour level labels in the variable in the data slot, stored as a factor in the data frame in the object’s data slot. As mentioned above, sp classes are new-style classes, and so the slots function can be used to look inside their slots.
-
-To import data that we will be using shortly, we use another utility function in maptools, which reads shoreline data in ‘Mapgen’ format from the National Geophysical Data Center coastline extractor [6] into a SpatialLines object directly, here selected for the window shown as the object bounding box:
 
 ```{r, comment=NA}
 llCRS <- CRS("+proj=longlat +ellps=WGS84")
 auck_shore <- MapGen2SL("auckland_mapgen.dat", llCRS) 
 summary(auck_shore)
 ```
-
-The shorelines are still just represented by lines, shown in **Figure 2.5**, and so color filling of apparent polygons formed by line rings is not possible. For this we need a class of polygon objects, discussed in Section 2.6. Lines, however, can be generalized by removing detail that is not required for analysis or visualization – the maps and RArcInfo packages contain functions for line thinning. This operation can be performed successfully only on lines, because neighboring polygons may have their shared boundary thinned differently. This leads to the creation of slivers, thin zones belonging to neither polygon or to both.
 
 ```{r, comment=NA}
 lns <- slot(auck_shore, "lines")
@@ -482,8 +358,6 @@ legend("bottomleft", legend = "b)", bty = "n")
 
 ## 2.6 SpatialPolygons
 
-The basic representation of a polygon in S is a closed line, a sequence of point coordinates where the first point is the same as the last point. A set of polygons is made of closed lines separated by NA points. Like lines, it is not easy to work with polygons represented this way. To have a data set to use for polygons, we first identify the lines imported above representing the shoreline around Auckland. Many are islands, and so have identical first and last coordinates.
-
 ```{r, comment=NA}
 lns <- slot(auck_shore, "lines")
 table(sapply(lns, function(x) length(slot(x, "Lines"))))
@@ -494,25 +368,17 @@ islands_auck <- sapply(lns, function(x) {
 table(islands_auck)
 ```
 
-Since all the Lines in the auck_shore object contain only single Line objects, checking the equality of the first and last coordinates of the first Line object in each Lines object tells us which sets of coordinates can validly be made into polygons. The nesting of classes for polygons is the same as that for lines, but the successive objects have more slots.
-
 ```{r, comment=NA}
 getClass("Polygon")
 ```
-
-The Polygon class extends the Line class by adding slots needed for polygons and checking that the first and last coordinates are identical. The extra slots are a label point, taken as the centroid of the polygon, the area of the polygon in the metric of the coordinates, whether the polygon is declared as a hole or not – the default value is a logical NA, and the ring direction of the polygon (discussed later in Section 2.6.2). No check is made of whether lines cross or polygons have ‘errors’, in other words whether features are simple in the OpenGIS (OpenGeoSpatial) [7] context; these are discussed briefly later on pages 122. GIS should do this, and we assume that data read into R can be trusted and contain only simple features.
 
 ```{r, comment=NA}
 getClass("Polygons")
 ```
 
-The Polygons class contains a list of valid Polygon objects, an identifying character string, a label point taken as the label point of the constituent polygon with the largest area, and two slots used as helpers in plotting using R graphics functions, given this representation of sets of polygons. These set the order in which the polygons belonging to this object should be plotted, and the gross area of the polygon, equal to the sum of all the constituent polygons. A Polygons object may, for example, represent an administrative district located on two sides of a river, or archipelago. Each of the parts should be seen separately, but data are only available for the larger entity.
-
 ```{r, comment=NA}
 getClass("SpatialPolygons")
 ```
-
-The top level representation of polygons is as a SpatialPolygons object, a set of Polygons objects with the additional slots of a Spatial object to contain the bounding box and projection information of the set as a whole. Like the Polygons object, it has a plot order slot, defined by default to plot its member polygons, stored in the polygons as a list of Polygons, in order of gross area, from largest to smallest. Choosing only the lines in the Auckland shoreline data set which are closed polygons, we can build a SpatialPolygons object.
 
 ```{r, comment=NA}
 islands_sl <- auck_shore[islands_auck]
@@ -530,13 +396,7 @@ order(sapply(slot(islands_sp, "polygons"), function(x) slot(x, "area")),
       decreasing = TRUE)
 ```
 
-As we saw with the construction of SpatialLines objects from raw coordinates, here we build a list of Polygon objects for each Polygons object, corresponding to a single identifying tag. A list of these Polygons objects is then passed to the SpatialPolygons function, with a coordinate reference system, to create the SpatialPolygons object. Again, like SpatialLines objects, SpatialPolygons objects are most often created by functions that import or manipulate such data objects, and seldom from scratch.
-
 ### 2.6.1 SpatialPolygonsDataFrame Objects
-
-As with other spatial data objects, SpatialPolygonsDataFrame objects bring together the spatial representations of the polygons with data. The identifying tags of the Polygons in the polygon slot of a SpatialPolygons object are matched with the row names of the data frame to make sure that the correct data rows are associated with the correct spatial objects. The data frame is reordered by row to match the spatial objects if need be, provided all the objects can be matched to row names. If any differences are found, an error results. Both identifying tags and data frame row names are character strings, and so their sort order is also character, meaning that "2" follows "11" and "111" [8].
-
-As an example, we take a set of scores by US state of 1999 Scholastic Aptitude Test (SAT) used for spatial data analysis by Melanie Wall [9]. In the data source, there are also results for Alaska, Hawaii, and for the US as a whole. If we would like to associate the data with state boundary polygons provided in the maps package, it is convenient to convert the boundaries to a SpatialPolygons object – see also Chapter 4.
 
 ```{r, comment=NA}
 state.map <- map("state", plot = FALSE, fill = TRUE)
@@ -544,8 +404,6 @@ IDs <- sapply(strsplit(state.map$names, ":"), function(x) x[1])
 state.sp <- map2SpatialPolygons(state.map, IDs = IDs,
   proj4string = CRS("+proj=longlat +ellps=WGS84"))
 ```
-
-Then we can use identifying tag matching to suit the rows of the data frame to the SpatialPolygons. Here, the rows of the data frame for which there are no matches will be dropped; all the Polygons objects are matched:
 
 ```{r, comment=NA}
 sat <- read.table("state.sat.data_mod.txt", row.names = 5, header = TRUE)
@@ -558,14 +416,10 @@ str(slot(state.spdf, "data"))
 str(state.spdf, max.level = 2)
 ```
 
-If we modify the row name of ‘arizona’ in the data frame to ‘Arizona’, there is no longer a match with a polygon identifying tag, and an error is signalled.
-
 ```{r, comment=NA, error=FALSE}
 rownames(sat1)[2] <- "Arizona"
 try(SpatialPolygonsDataFrame(state.sp, sat1))
 ```
-
-In subsequent analysis, Wall (2004) also drops District of Columbia. Rather than having to manipulate polygons and their data separately, when using a SpatialPolygonsDataFrame object, we can say:
 
 ```{r, comment=NA}
 DC <- "district of columbia"
@@ -577,12 +431,6 @@ summary(state.spdf1)
 
 ### 2.6.2 Holes and Ring Direction
 
-The hole and ring direction slots are included in Polygon objects as heuristics to address some of the difficulties arising from S not being a GIS. In a traditional vector GIS, and in the underlying structure of the data stored in maps, boundaries between polygons are stored only once as arcs between nodes (shared vertices between three or more polygons, possibly including the external space), and the polygons are constructed on the fly from lists of directed boundary arcs, including boundaries with the external space – void – not included in any polygon. This is known as the topological representation of polygons, and is appropriate for GIS software, but arguably not for other software using spatial data. It was mentioned above that it is the user’s responsibility to provide line coordinates such that the coordinates represent the line object the user requires. If the user requires, for example, that a river channel does not cross itself, the user has to impose that limitation. Other users will not need such a limitation, as for example tracking data may very well involve an animal crossing its tracks.
-
-The approach that has been chosen in sp is to use two markers commonly encountered in practice, marking polygons as holes with a logical (TRUE/FALSE) flag, the hole slot, and using ring direction – clockwise rings are taken as not being holes, anti-clockwise as being holes. This is needed because the non-topological representation of polygons has no easy way of knowing that a polygon represents an internal boundary of an enclosing polygon, a hole, or lake.
-
-An approach that works when the relative status of polygons is known is to set the hole slot directly. This is done in reading GSHHS shoreline data, already used in **Figure 2.3** and described in Chapter 4. The data source includes a variable for each polygon, where the levels are land: 1, lake: 2, island in lake: 3, and lake on island in lake: 4. The following example takes a region of interest on the northern, Canadian shore of Lake Huron, including Manitoulin Island, and a number of lakes on the island, including Kongawong Lake.
-
 ```{r, comment=NA}
 load("high.RData")
 manitoulin_sp <- high$SP
@@ -590,8 +438,6 @@ length(slot(manitoulin_sp, "polygons"))
 sapply(slot(slot(manitoulin_sp, "polygons")[[1]], "Polygons"), function(x) slot(x, "hole"))
 sapply(slot(slot(manitoulin_sp, "polygons")[[1]], "Polygons"), function(x) slot(x, "ringDir"))
 ```
-
-In **Figure 2.6**, there is only one Polygons object in the polygons slot of manitoulin_sp, representing the continental landmass, exposed along the northern edge, and containing the complete set of polygons. Within this is a large section covered by Lake Huron, which in turn is covered by islands and lakes on islands. Not having a full topological representation means that for plotting, we paint the land first, then paint the lake, then the islands, and finally the lakes on islands. Because the default plotting color for holes is ‘transparent’, they can appear to be merged into the surrounding land – the same problem arises where the hole slot is wrongly assigned. The plotOrder slots in Polygons and SpatialPolygons objects attempt to get around this problem, but care is usually sensible if the spatial objects being handled are complicated.
 
 ```{r, comment=NA}
 manitoulin_sp <- createSPComment(manitoulin_sp)
@@ -612,13 +458,9 @@ text(t(sapply(slot(slot(manitoulin_sp, "polygons")[[1]], "Polygons"),
 
 ## 2.7 SpatialGrid and SpatialPixel Objects
 
-The point, line, and polygon objects we have considered until now have been handled one-by-one. Grids are regular objects requiring much less information to define their structure. Once the single point of origin is known, the extent of the grid can be given by the cell resolution and the numbers of rows and columns present in the full grid. This representation is typical for remote sensing and raster GIS, and is used widely for storing data in regular rectangular cells, such as digital elevation models, satellite imagery, and interpolated data from point measurements, as well as image processing.
-
 ```{r, comment=NA}
 getClass("GridTopology")
 ```
-
-As an example, we make a GridTopology object from the bounding box of the Manitoulin Island vector data set. If we choose a cell size of 0.01◦ in each direction, we can offset the south-west cell centre to make sure that at least the whole area is covered, and find a suitable number of cells in each dimension.
 
 ```{r, comment=NA}
 bb <- bbox(manitoulin_sp)
@@ -632,21 +474,15 @@ manitoulin_grd <- GridTopology(cellcentre.offset = cc,
 manitoulin_grd
 ```
 
-The object describes the grid completely, and can be used to construct a SpatialGrid object. A SpatialGrid object contains GridTopology and Spatial objects, together with two helper slots, grid.index and coords. These are set to zero and to the bounding box of the cell centers of the grid, respectively.
-
 ```{r, comment=NA}
 getClass("SpatialGrid")
 ```
-
-Using the GridTopology object created above, and passing through the coordinate reference system of the original GSHHS data, the bounding box is created automatically, as we see from the summary of the object:
 
 ```{r, comment=NA}
 p4s <- CRS(proj4string(manitoulin_sp))
 manitoulin_SG <- SpatialGrid(manitoulin_grd, proj4string = p4s) 
 summary(manitoulin_SG)
 ```
-
-As an example of using these classes with imported data, we use an excerpt from the Shuttle Radar Topography Mission (SRTM) flown in 2000, for the Auckland area [10] (**Figure 2.7**). The data have been read from a Geotiff file into a SpatialGridDataFrame object – a SpatialGrid object extended with a data slot occupied by a data.frame object, filled with a single band of data representing elevation in meters. After checking the class of the data object, we examine in turn its slots. The grid slot contains the underlying GridTopology object, with the lower left cell centre coordinates, the pair of cell size resolution values, here both equal to 3 arcsec, and the numbers of columns and rows:
 
 ```{r, comment=NA, error=TRUE}
 #auck_el1 <- readGDAL("70042108.tif")
@@ -697,14 +533,10 @@ r2 <- as(r1, "RasterLayer")
 summary(r2)
 ```
 
-The grid.index slot is empty, while the coords slot is as described earlier. It differs from the bounding box of the grid as a whole, contained in the bbox slot, by half a cell resolution value in each direction. The total size of the SpatialGridDataFrame object is just over 12MB, almost all of which is made up of the data slot.
-
 ```{r, comment=NA}
 is.na(auck_el1$band1) <- auck_el1$band1 <= 0
 summary(auck_el1$band1)
 ```
-
-Almost half of the data are at or below sea level, and other values are spikes in the radar data, and should be set to NA. Once this is done, about half of the data are missing. In other cases, even larger proportions of raster grids are missing, suggesting that an alternative representation of the same data might be attractive. One candidate from Terralib, discussed further in Chapter 4, is the cell representation of rasters, where the raster cells with data are represented by the coordinates of the cell centre, and by the sequence number of the cell among all the cells in the raster. In this representation, missing data are discarded, and savings in space and processing time can be large. It also permits cells to be stored, like points, in an external database. The class is here termed SpatialPixels, and has the same slots as SpatialGrid objects, but differently filled (**Figure 2.8**). The SpatialPixelsDataFrame class is analogous.
 
 - **SpatialGridDataFrame**
     + **SpatialGrid**
@@ -752,17 +584,11 @@ sum(is.na(auck_el1$band1)) + nrow(slot(auck_el2, "coords"))
 prod(slot(slot(auck_el2, "grid"), "cells.dim"))
 ```
 
-Returning to our example, we can coerce our SpatialGridDataFrame object to a SpatialPixelsDataFrame object. In this case, the proportion of missing to occupied cells is unfavorable, and when the grid.index and coords slots are populated with cell indices and coordinates, the output object is almost twice as large as its SpatialGridDataFrame equivalent. We can also see that the total number of cells – the product of the row and column dimensions – is equal to the number of coordinates in the output object plus the number of missing data values deleted by coercion. Had the number of attributes been 10, then the space saving relative to storing the full grid would have been 37%; with 100 attributes it would have been 48% for this particular case.
-
 ```{r, comment=NA}
 auck_el_500 <- auck_el2[auck_el2$band1 > 500, ]
 summary(auck_el_500)
 object.size(auck_el_500)
 ```
-
-Taking just the raster cells over 500 m, of which there are very few, less than 1% of the total, yields a much smaller object. In this case it has a smaller bounding box, and gaps between the pixels present, as the warning messages indicate.
-
-We can also create a SpatialPixels object directly from a SpatialPoints object. As our example, we use the Meuse bank data set provided with sp. We can pass a SpatialPoints object to the SpatialPixels function, where the Spatial object components are copied across, and the points checked to see whether they lie on a regular grid. If they do, the function will return a SpatialPixels object:
 
 ```{r, comment=NA}
 data(meuse.grid)
@@ -773,31 +599,7 @@ summary(mg_SPix0)
 prod(slot(slot(mg_SPix0, "grid"), "cells.dim"))
 ```
 
-As we can see from the product of the cell dimensions of the underlying grid, over half of the full grid is not present in the SpatialPixels representation, because many grid cells lie outside the study area. Alternatively, we can coerce a SpatialPoints object to a SpatialPixels object:
-
 ```{r, comment=NA}
 mg_SPix1 <- as(mg_SP, "SpatialPixels")
 summary(mg_SPix1)
 ```
-
-We have now described a coherent and consistent set of classes for spatial data. Other representations are also used by R packages, and we show further ways of converting between these representations and external formats in Chapter 4. Before treating data import and export, we discuss graphical methods for sp classes, to show that the effort of putting the data in formal classes may be justified by the relative ease with which we can make maps.
-
-[1] http://earth.google.com/
-
-[2] Free documentation, including the very useful ‘An Introduction to R’ (Venables et al., 2008), may be downloaded from CRAN.
-
-[3] str can take additional arguments to control its output.
-
-[4] There is little instructional material online, although this useR conference talk remains relevant: http://www.ci.tuwien.ac.at/Conferences/useR-2004/Keynotes/Leisch.pdf
-
-[5] Data downloaded with permission from SEAMAP (Read et al., 2003), data set 105.
-
-[6] http://www.ngdc.noaa.gov/mgg/shorelines/shorelines.html
-
-[7] http://www.opengeospatial.org/
-
-[8] Some maptools functions use Gregory R. Warnes’ mixedorder sort from gtools to sort integer-like strings in integer order.
-
-[9] http://www.biostat.umn.edu/~melanie/Data/, data here supplemented with variable names and state names as used in maps.
-
-[10] Downloaded from the seamless data distribution system for 3arcsec ‘Finished’ (90m) data, http://seamless.usgs.gov/; the data can be downloaded as one degree square tiles, or cropped from a seamless raster database, as has been done here to avoid patching tiles together.

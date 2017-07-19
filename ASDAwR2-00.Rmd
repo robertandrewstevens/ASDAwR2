@@ -1,33 +1,16 @@
 ---
-title: "sawr00"
+title: "ASDAwR2-00"
 author: "Robert A. Stevens"
-date: "January 5, 2017"
+date: "July 10, 2017"
 output: html_document
 ---
 
-*Applied Spatial Data Analysis with R* by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
+*Applied Spatial Data Analysis with R* (2nd Ed.)
+
+by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
 
 # Preface
 
-We began writing this book in parallel with developing software for handling and analyzing spatial data with R (R Development Core Team, 2008). Although the book is now complete, software development will continue, in the R community fashion, of rich and satisfying interaction with users around the world, of rapid releases to resolve problems, and of the usual joys and frustrations of getting things done. There is little doubt that without pressure from users, the development of R would not have reached its present scale, and the same applies to analyzing spatial data analysis with R.
-
-It would, however, not be sufficient to describe the development of the R project mainly in terms of narrowly defined utility. In addition to being a community project concerned with the development of world-class data analysis software implementations, it promotes specific choices with regard to how data analysis is carried out. R is open source not only because open source software development, including the dynamics of broad and inclusive user and developer communities, is arguably an attractive and successful development model.
-
-R is also, or perhaps chiefly, open source because the analysis of empirical and simulated data in science should be reproducible. As working researchers, we are all too aware of the possibility of reaching inappropriate conclusions in good faith because of user error or misjudgment. When the results of research really matter, as in public health, in climate change, and in many other fields involving spatial data, good research practice dictates that someone else should be, at least in principle, able to check the results. Open source software means that the methods used can, if required, be audited, and journalling working sessions can ensure that we have a record of what we actually did, not what we thought we did. Further, using Sweave [1] – a tool that permits the embedding of R code for complete data analyses in documents – throughout this book has provided crucial support (Leisch, 2002; Leisch and Rossini, 2003).
-
-We acknowledge our debt to the members of R-core for their continuing commitment to the R project. In particular, the leadership and example of Professor Brian Ripley has been important to us, although our admitted ‘muddling through’ contrasts with his peerless attention to detail. His interested support at the Distributed Statistical Computing conference in Vienna in 2003 helped us to see that encouraging spatial data analysis in R was a project worth pursuing. Kurt Hornik’s dedication to keep the Comprehensive R Archive Network running smoothly, providing package maintainers with superb, almost 24/7, service, and his dry humor when we blunder, have meant that the useR community is provided with contributed software in an unequalled fashion. We are also grateful to Martin Machler for his help in setting up and hosting the R-Sig-Geo mailing list, without which we would have not had a channel for fostering the R spatial community.
-
-We also owe a great debt to users participating in discussions on the mailing list, sometimes for specific suggestions, often for fruitful questions, and occasionally for perceptive bug reports or contributions. Other users contact us directly, again with valuable input that leads both to a better understanding on our part of their research realities and to the improvement of the software involved. Finally, participants at R spatial courses, workshops, and tutorials have been patient and constructive.
-
-We are also indebted to colleagues who have contributed to improving the final manuscript by commenting on earlier drafts and pointing out better procedures to follow in some examples. In particular, we would like to mention Juanjo Abella ́n, Nicky Best, Peter J. Diggle, Paul Hiemstra, Rebeca Ramis, Paulo J. Ribeiro Jr., Barry Rowlingson, and Jon O. Skøien. We are also grateful to colleagues for agreeing to our use of their data sets. Support from Luc Anselin has been important over a long period, including a very fruitful CSISS workshop in Santa Barbara in 2002. Work by colleagues, such as the first book known to us on using R for spatial data analysis (Kopczewska, 2006), provided further incentives both to simplify the software and complete its description. Without John Kimmel’s patient encouragement, it is unlikely that we would have finished this book.
-
-Even though we have benefitted from the help and advice of so many people, there are bound to be things we have not yet grasped – so remaining mistakes and omissions remain our sole responsibility. We would be grateful for messages pointing out errors in this book; errata will be posted on the book website (http://www.asdar-book.org).
-
-Roger S. Bivand, Bergen  
-Edzer J. Pebesma, Münster
-Virgilio Gomez-Rubi, London
-April 2008  
- 
 # Contents
 
 Preface
@@ -59,43 +42,9 @@ Functions Index
 
 ## Handling Spatial Data
 
-The key intuition underlying the development of the classes and methods in the sp package, and its closer dependent packages, is that users approaching R with experience of GIS will want to see ‘layers’, ‘coverages’, ‘rasters’, or ‘geometries’. Seen from this point of view, sp classes should be reasonably familiar, appearing to be well-known data models. On the other hand, for statistician users of R, ‘everything’ is a data.frame, a rectangular table with rows of observations on columns of variables. To permit the two disparate groups of users to play together happily, classes have grown that look like GIS data models to GIS and other spatial data people, and look and behave like data frames from the point of view of applied statisticians and other data analysts.
-
-This part of the book describes the classes and methods of the sp package, and in doing so also provides a practical guide to the internal structure of many GIS data models, as R permits the user to get as close as desired to the data. However, users will not often need to know more than that of Chapter 4 to read in their data and start work. Visualization is covered in Chapter 3, and so a statistician receiving a well-organized set of data from a collaborator may even be able to start making maps in two lines of code, one to read the data and one to plot the variable of interest using lattice graphics. Note that colored versions of figures may be found on the book website together with complete code examples, data sets, and other support material.
-
-If life was always so convenient, this part of the book could be much shorter than it is. But combining spatial data from different sources often means that much more insight is needed into the data models involved. The data models themselves are described in Chapter 2, and methods for handling and combining them are covered in Chapter 5. Keeping track of which observation belongs to which geometry is also discussed here, seen from the GIS side as feature identifiers, and row names from the data frame side. In addition to data import and export, Chapter 4 also describes the use and transformation of coordinate reference systems for sp classes, and integration of the open source GRASS GIS and R. Finally, Chapter 6 explains how the methods and classes introduced in Chapter 2 can be extended to suit one’s own needs.
-
 # Part II: Analyzing Spatial Data
 
 ## Analyzing Spatial Data
-
-The analysis of spatial data is usually undertaken to make inferences, that is to try to draw conclusions about a hypothesized data generating process or to use an estimated process to predict values at locations for which observations are unavailable. In some cases, the conclusions are sufficient in themselves, and in others, they are carried through to other hierarchical layers in the model under scrutiny. Haining (2003, pages 184–185) and Bivand (2002, page 409) suggest (following Tukey, 1977) that our understanding of the data may be partitioned into
-
-    data = smooth + rough
-
-If the data are spatial, we can see that there is room for another term, irrespective of whether we are more interested in the fit of the model itself or in calibrating the model in order to predict for new data:
-
-    data = smooth + spatial smooth + rough
-
-The added term constitutes the ‘added value’ of spatial data analysis, bringing better understanding or predictive accuracy at the price of using specialized methods for fitting the spatial smooth term. We will here be concerned with methods for finding out whether fitting this term is worth the effort, and, if so, how we might choose to go about doing so.
-
-Before rushing off to apply such specialized methods, it is worth thinking through the research problem thoroughly. We have already mentioned the importance of the Distributed Statistical Computing conference in Vienna in 2003 for our work. At that meeting, Bill Venables presented a fascinating study of a real research problem in the management of tiger prawn fisheries. The variable of interest was the proportion by weight of two species of tiger prawn in the logbook on a given night at a given location. In a very careful treatment of the context available, the ‘location’ was not simply taken as a point in space with geographical coordinates:
-
-*Rather than use latitude and longitude directly as predictors, we find it more effective to represent station locations using the following two predictors:*
-
-- *The shortest distance from the station to the coast (variable Rland), and*
-
-- *The distance from an origin in the west to the nearest point to the station along an arbitrary curve running nearly parallel to the coast (variable Rdist).*
-
-*[...] Rather than use Rdist itself as a predictor, we use a natural spline basis that allows the fitted linear predictor to depend on the variable in a flexible curvilinear way.*
-
-*[...] Similarly, we choose a natural spline term with four internal knots at the quantiles of the corresponding variable for the logbook data for the “distance from dry land” variable, Rland.*
-
-*The major reason to use this system, which is adapted to the coastline, is that interactions between Rland and Rdist are more likely to be negligible than for latitude and longitude, thus simplifying the model. The fact that they do not form a true coordinate system equivalent to latitude and longitude is no real disadvantage for the models we propose.* - Venables and Dichmont (2004, pages 412–413)
-
-The paper deserves to be required reading in its entirety for all spatial data analysts, not least because of its sustained focus on the research problem at hand. It also demonstrates that because applied spatial data analysis builds on and extends applied data analysis, specifically spatial methods should be used when the problem cannot be solved with general methods. Consequently, familiarity with the modeling chapters of textbooks using R for analysis will be of great help in distinguishing between situations calling for spatial solutions, and those that do not, even though the data are spatial. Readers will benefit from having one or more of Fox (2002), Dalgaard (2002), Faraway (2004, 2006), or Venables and Ripley (2002) to refer to in seeking guidance on making often difficult research decisions.
-
-In introducing this part of the book – covering specialized spatial methods but touching in places on non-spatial methods – we use the classification of Cressie (1993) of spatial statistics into three areas, spatial point patterns, covered here in Chapter 7, geostatistical data in Chapter 8, and lattice data, here termed areal data, in Chapters 9–11. In Chapter 1, we mentioned a number of central books on spatial statistics and spatial data analysis; **Table II.1** shows very roughly which of our chapters contain material that illustrates some of the methods presented in more recent spatial statistics books, including treatments of all three areas of spatial statistics discussed earlier (see page 13).
 
 **Table II.1**. Thematic cross-tabulation of chapters in this book with chapters and sections of chosen books on spatial statistics and spatial data analysis
 
@@ -107,15 +56,4 @@ Waller and Gotway (2004)        5       8     6-7, 9
 Fortin and Dale (2005)          2.1-2.2 3.5   3.1-3.4, 5  
 O’Sullivan and Unwin (2003)     4-5     8-9   7  
 
-The coverage here is uneven, because only a limited number of the topics covered in these books could be accommodated; the specialized literature within the three areas will be referenced directly in the relevant chapters. On the other hand, the implementations discussed below may be extended to cover alternative methods; for example, the use of WinBUGS with R is introduced in Chapter 11 in general forms capable of extension. The choice of contributed packages is also uneven; we have used the packages that we maintain, but this does not constitute a recommendation of these rather than other approaches (see **Figure 1.1**). Note that colored versions of figures may be found on the book website together with complete code examples, data sets, and other support material.
-
 # Afterword
-
-Both parts of this book have quite consciously tried not to give authoritative advice on choices of methods or techniques [2]. The handling and analysis of spatial data with R continues to evolve – this is implicit in open source software development. It is also an important component attempting to offer applied researchers access to accepted and innovative alternatives for data analysis, and applied statisticians with representations of spatial data that make it easier to test and develop new analytical tools.
-
-A further goal has been to provide opportunities for bringing together the various camps and traditions analysing spatial data, to make it somewhat easier to see that their ways of conducting their work are not so different from one another in practise. It has always been worrying that fields like disease mapping or spatial econometrics, with very similar data scenarios, make different choices with regard to methods, and treatments of the assumptions underlying those methods, in their research practise. Research practise evolves, and learning from a broader spread of disciplines must offer the chance to avoid choices that others have found less satisfactory, to follow choices from which others have benefitted and to participate in innovation in methods.
-This makes participation in the R community, posting questions or suggestions, reporting apparent bugs not only a practical activity, but also an affirmation that science is fostered more by openness than the unwarranted restriction of findings. In the context of this book, and as we said in the preface, we would be grateful for messages pointing out errors; errata will be posted on the book website (http://www.asdar-book.org).
-
-[1] http://www.statistik.lmu.de/~leisch/Sweave/
-
-[2] An illustration from an email exchange between the authors: “I think we are trying to enable people to do what they want, even if they shoot themselves in the feet (but in a reproducible way)!”
